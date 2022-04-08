@@ -48,6 +48,16 @@ class Player(pygame.sprite.Sprite):
             self.horizontal_speed = 0
 
         self.x += self.horizontal_speed
+        self.rect.center = (self.x, self.y)
+
+        hits = pygame.sprite.spritecollide(self, walls, False)
+        if hits:
+            if self.horizontal_speed != 0:
+                self.set_position(hits[0].rect.left - self.rect.width/2 if self.horizontal_speed > 0 else hits[0].rect.right + self.rect.width/2, self.y)
+                self.horizontal_speed = 0
+        else:
+            self.horizontal_speed *= .5
+            
         self.y += self.vertical_speed
         self.rect.center = (self.x, self.y)
 
@@ -57,16 +67,8 @@ class Player(pygame.sprite.Sprite):
                 self.set_position(self.x, hits[0].rect.top - self.rect.height/2)
                 self.vertical_speed = 0
                 self.vertical_speed += self.acc_y
-                self.horizontal_speed *= .5
         else:
             self.vertical_speed += GRAVITY
-            self.horizontal_speed *= .25
-        
-        hits = pygame.sprite.spritecollide(self, walls, False)
-        if hits:
-            if self.horizontal_speed != 0:
-                self.set_position(hits[0].rect.left - self.rect.width/2 if self.horizontal_speed > 0 else hits[0].rect.right + self.rect.width/2, self.y)
-                self.horizontal_speed = 0
 
         self.acc_x = 0
         self.acc_y = 0
