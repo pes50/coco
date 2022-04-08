@@ -1,3 +1,4 @@
+import random
 import pygame
 from pygame.locals import *
 import sys
@@ -35,11 +36,6 @@ class Player(pygame.sprite.Sprite):
         self.acc_y = 0
         self.prev_x = 0
         self.prev_y = 0
-    
-    def set_position(self, x, y):
-        self.x = x
-        self.y = y
-        self.rect.center = (self.x, self.y)
 
     def move(self):
         self.horizontal_speed += self.acc_x
@@ -47,8 +43,7 @@ class Player(pygame.sprite.Sprite):
         if self.horizontal_speed > -.2 and self.horizontal_speed < .2:
             self.horizontal_speed = 0
 
-        self.x += self.horizontal_speed
-        self.rect.center = (self.x, self.y)
+        self.set_position(self.x + self.horizontal_speed, self.y)
 
         hits = pygame.sprite.spritecollide(self, walls, False)
         if hits:
@@ -57,9 +52,8 @@ class Player(pygame.sprite.Sprite):
                 self.horizontal_speed = 0
         else:
             self.horizontal_speed *= .5
-            
-        self.y += self.vertical_speed
-        self.rect.center = (self.x, self.y)
+
+        self.set_position(self.x, self.y + self.vertical_speed)
 
         hits = pygame.sprite.spritecollide(self, walls, False)
         if hits:
@@ -67,11 +61,27 @@ class Player(pygame.sprite.Sprite):
                 self.set_position(self.x, hits[0].rect.top - self.rect.height/2)
                 self.vertical_speed = 0
                 self.vertical_speed += self.acc_y
+            elif self.vertical_speed < 0:
+                self.set_position(self.x, hits[0].rect.bottom + self.rect.height/2)
+                self.vertical_speed = 0
+
         else:
             self.vertical_speed += GRAVITY
 
         self.acc_x = 0
         self.acc_y = 0
+        
+        if self.y > WINDOW_HEIGHT:
+            self.respawn()
+    
+    def respawn(self):
+        sp = random.choice(spawnpoints)
+        self.set_position(sp[0]*CELL_SIZE + CELL_SIZE/2, sp[1] * CELL_SIZE)
+
+    def set_position(self, x, y):
+        self.x = x
+        self.y = y
+        self.rect.center = (self.x, self.y)
 
         
 
@@ -79,11 +89,11 @@ class Wall(pygame.sprite.Sprite):
     def __init__(self, grid_x, grid_y):
         super().__init__()
         self.surf = pygame.Surface((CELL_SIZE, CELL_SIZE))
-        self.surf.fill((255,0,0))
+        self.surf.fill((255,0,40))
         self.rect = self.surf.get_rect(center = (grid_x * CELL_SIZE + CELL_SIZE/2, grid_y * CELL_SIZE + CELL_SIZE/2))
 
 def main():
-    global FPS_CLOCK, DISPLAY_SURFACE, BASIC_FONT, all_sprites, walls
+    global FPS_CLOCK, DISPLAY_SURFACE, BASIC_FONT, all_sprites, walls, p1, p2
 
     pygame.init()
     FPS_CLOCK = pygame.time.Clock()
@@ -91,16 +101,14 @@ def main():
     pygame.display.set_caption('Hra')
     BASIC_FONT = pygame.font.Font('freesansbold.ttf', BASIC_FONT_SIZE)
 
-    p1 = Player(1, 100, 100)
-    p2 = Player(2, 200, 100)
-
     all_sprites = pygame.sprite.Group()
+    p1 = Player(1, 0, 0)
     all_sprites.add(p1)
+    p2 = Player(2, 0, 0)
     all_sprites.add(p2)
-
     walls = pygame.sprite.Group()
 
-    load_level('level1.txt')
+    start_game('level1.txt')
 
     while True:
         for event in pygame.event.get():
@@ -140,7 +148,9 @@ def main():
         pygame.display.update()
         FPS_CLOCK.tick(FPS)
 
-def load_level(filename):
+def start_game(filename):
+    global spawnpoints
+    spawnpoints = []
     with open(filename, 'r') as f:
         level_map = [line.strip() for line in f]
     for y in range(CELLS_Y):
@@ -149,6 +159,11 @@ def load_level(filename):
                 wall = Wall(x, y)
                 walls.add(wall)
                 all_sprites.add(wall)
+            elif level_map[y][x] == 'S':
+                spawnpoints.append((x, y))
+    random.shuffle(spawnpoints)
+    p1.set_position(spawnpoints[0][0] * CELL_SIZE + CELL_SIZE/2, spawnpoints[0][1] * CELL_SIZE)
+    p2.set_position(spawnpoints[1][0] * CELL_SIZE + CELL_SIZE/2, spawnpoints[1][1] * CELL_SIZE)              
 
 
 def terminate():
