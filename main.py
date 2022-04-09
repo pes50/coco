@@ -13,6 +13,7 @@ CELLS_Y = int(WINDOW_HEIGHT / CELL_SIZE)
 PLAYER_SPEED = 3
 PLAYER_JUMP_SPEED = 20
 GRAVITY = 1
+COOLDOWN = FPS/3
 
 """ generate level template
 with open('level1.txt', 'w') as f:
@@ -22,6 +23,22 @@ with open('level1.txt', 'w') as f:
         f.write('\n')
 """
 
+class Bullet(pygame.sprite.Sprite):
+    def __init__(self, player):
+        super().__init__()
+        self.x = player.x
+        self.y = player.y - 10
+        self.player = player
+        self.direction = player.direction
+        self.surf = pygame.Surface((10, 4))
+        self.surf.fill((255,255,40))
+        self.rect = self.surf.get_rect(center = (player.x, player.y) if self.direction == 1 else (player.x, player.y))
+        bullets.append(self)
+    
+    def move(self):
+        self.x += 10 * self.direction
+        self.rect.center = (self.x if self.direction == 1 else self.x + self.rect.width, self.y)
+
 class Player(pygame.sprite.Sprite):
     def __init__(self, player, x, y):
         super().__init__() 
@@ -29,15 +46,20 @@ class Player(pygame.sprite.Sprite):
         self.surf.fill((128,255,40))
         self.rect = self.surf.get_rect(center = (20, 80))
 
+        self.player = player
         self.set_position(x, y)
-        self.horizontal_speed = 0
-        self.vertical_speed = 0
         self.acc_x = 0
         self.acc_y = 0
-        self.prev_x = 0
-        self.prev_y = 0
+        self.horizontal_speed = 0
+        self.vertical_speed = 0
+        self.direction = 1
+        self.cooldown = 0
+        self.cooldown_max = COOLDOWN
 
-    def move(self):
+    def step(self):
+        if self.cooldown > 0:
+            self.cooldown -= 1
+
         self.horizontal_speed += self.acc_x
 
         if self.horizontal_speed > -.2 and self.horizontal_speed < .2:
@@ -93,7 +115,7 @@ class Wall(pygame.sprite.Sprite):
         self.rect = self.surf.get_rect(center = (grid_x * CELL_SIZE + CELL_SIZE/2, grid_y * CELL_SIZE + CELL_SIZE/2))
 
 def main():
-    global FPS_CLOCK, DISPLAY_SURFACE, BASIC_FONT, all_sprites, walls, p1, p2
+    global FPS_CLOCK, DISPLAY_SURFACE, BASIC_FONT, all_sprites, walls, p1, p2, bullets
 
     pygame.init()
     FPS_CLOCK = pygame.time.Clock()
@@ -107,6 +129,7 @@ def main():
     p2 = Player(2, 0, 0)
     all_sprites.add(p2)
     walls = pygame.sprite.Group()
+    bullets = []
 
     start_game('level1.txt')
 
@@ -119,21 +142,38 @@ def main():
         p1.acc_x = 0
         if keys[K_a]:
             p1.acc_x -= PLAYER_SPEED
+            p1.direction = -1
         if keys[K_d]:
             p1.acc_x += PLAYER_SPEED
+            p1.direction = 1
         if keys[K_w]:
             p1.acc_y = -PLAYER_JUMP_SPEED
+        if keys[K_e]:
+            if p1.cooldown == 0:
+                create_bullet(p1)
+                p1.cooldown = p1.cooldown_max
         
+        mouse_keys = pygame.mouse.get_pressed(num_buttons=3)
+        mouse_position = pygame.mouse.get_pos()
         p2.acc_x = 0
-        if keys[K_LEFT]:
+        if mouse_position[0] < p2.x - p2.rect.width/2:
             p2.acc_x -= PLAYER_SPEED
-        if keys[K_RIGHT]:
+            p2.direction = -1
+        elif mouse_position[0] > p2.x + p2.rect.width/2:
             p2.acc_x += PLAYER_SPEED
-        if keys[K_UP]:
+            p2.direction = 1
+        if mouse_keys[2]:
             p2.acc_y = -PLAYER_JUMP_SPEED
+        if mouse_keys[0]:
+            if p2.cooldown == 0:
+                create_bullet(p2)
+                p2.cooldown = p2.cooldown_max
 
-        p1.move()
-        p2.move()
+        p1.step()
+        p2.step()
+
+        for bull in bullets:
+            bull.move()
 
         DISPLAY_SURFACE.fill((0,0,0))
         #Docasne
@@ -147,6 +187,10 @@ def main():
 
         pygame.display.update()
         FPS_CLOCK.tick(FPS)
+
+def create_bullet(player):
+    bullet = Bullet(player)
+    all_sprites.add(bullet)
 
 def start_game(filename):
     global spawnpoints
