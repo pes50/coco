@@ -14,6 +14,7 @@ PLAYER_SPEED = 3
 PLAYER_JUMP_SPEED = 20
 GRAVITY = 1
 COOLDOWN = FPS/3
+MULTIPLIER_ADD = 1.1
 
 """ generate level template
 with open('level1.txt', 'w') as f:
@@ -38,6 +39,26 @@ class Bullet(pygame.sprite.Sprite):
     def move(self):
         self.x += 10 * self.direction
         self.rect.center = (self.x if self.direction == 1 else self.x + self.rect.width, self.y)
+        hits_wall = pygame.sprite.spritecollide(self, walls, False)
+        hits_player = pygame.sprite.spritecollide(self, players, False)
+        if hits_player:
+            for p in hits_player:
+                if p != self.player:
+                    p.multiplier *= MULTIPLIER_ADD
+                    p.horizontal_speed += self.direction * p.multiplier
+                    p.vertical_speed -= p.multiplier *.2 
+                    self.kill()
+                    bullets.remove(self)
+
+        if hits_wall:
+            self.kill()
+            bullets.remove(self)
+
+        if self.x < -CELL_SIZE or self.x > WINDOW_WIDTH + CELL_SIZE:
+            self.kill()
+            bullets.remove(self)
+
+        
 
 class Player(pygame.sprite.Sprite):
     def __init__(self, player, x, y):
@@ -55,6 +76,7 @@ class Player(pygame.sprite.Sprite):
         self.direction = 1
         self.cooldown = 0
         self.cooldown_max = COOLDOWN
+        self.multiplier = 1
 
     def step(self):
         if self.cooldown > 0:
@@ -81,14 +103,19 @@ class Player(pygame.sprite.Sprite):
         if hits:
             if self.vertical_speed > 0:
                 self.set_position(self.x, hits[0].rect.top - self.rect.height/2)
+                previous_speed = self.vertical_speed
                 self.vertical_speed = 0
                 self.vertical_speed += self.acc_y
             elif self.vertical_speed < 0:
                 self.set_position(self.x, hits[0].rect.bottom + self.rect.height/2)
+                previous_speed = self.vertical_speed
                 self.vertical_speed = 0
 
         else:
             self.vertical_speed += GRAVITY
+
+        while pygame.sprite.spritecollide(self, walls, False):
+            self.set_position(self.x + previous_speed, self.y)
 
         self.acc_x = 0
         self.acc_y = 0
@@ -99,6 +126,7 @@ class Player(pygame.sprite.Sprite):
     def respawn(self):
         sp = random.choice(spawnpoints)
         self.set_position(sp[0]*CELL_SIZE + CELL_SIZE/2, sp[1] * CELL_SIZE)
+        self.multiplier = 1
 
     def set_position(self, x, y):
         self.x = x
@@ -115,7 +143,7 @@ class Wall(pygame.sprite.Sprite):
         self.rect = self.surf.get_rect(center = (grid_x * CELL_SIZE + CELL_SIZE/2, grid_y * CELL_SIZE + CELL_SIZE/2))
 
 def main():
-    global FPS_CLOCK, DISPLAY_SURFACE, BASIC_FONT, all_sprites, walls, p1, p2, bullets
+    global FPS_CLOCK, DISPLAY_SURFACE, BASIC_FONT, all_sprites, walls, p1, p2, bullets, players
 
     pygame.init()
     FPS_CLOCK = pygame.time.Clock()
@@ -124,11 +152,14 @@ def main():
     BASIC_FONT = pygame.font.Font('freesansbold.ttf', BASIC_FONT_SIZE)
 
     all_sprites = pygame.sprite.Group()
+    walls = pygame.sprite.Group()
+    players = pygame.sprite.Group()
     p1 = Player(1, 0, 0)
     all_sprites.add(p1)
+    players.add(p1)
     p2 = Player(2, 0, 0)
     all_sprites.add(p2)
-    walls = pygame.sprite.Group()
+    players.add(p2)
     bullets = []
 
     start_game('level1.txt')
