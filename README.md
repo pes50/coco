@@ -6,7 +6,9 @@
 | Jump | W | RMB |  
 | Attack | E | LMB |  
 ## Level Editor
-"_" = Acid
+"_" = Acid  
 "#" = Wall  
+"0" - "9" = Teleport  
 "S" = Spawnpoint  
+"T" = Spike
 "X" = Nothing  

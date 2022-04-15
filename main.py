@@ -1,6 +1,4 @@
-from csv import Dialect
 import random
-from tkinter.messagebox import NO
 import pygame
 from pygame.locals import *
 import sys
@@ -22,6 +20,7 @@ ACID_HEIGHT = 0.65
 ACID_NEUTRAL_COLOR = (40,40,255)
 P1_COLOR = (128,255,40)
 P2_COLOR = (255,128,40)
+TEXT_OFFSET = 5
 
 """ Generate level template
 with open('level1.txt', 'w') as f:
@@ -81,7 +80,40 @@ class Bullet(pygame.sprite.Sprite):
             self.kill()
             bullets.remove(self)
 
-        
+class Pickup(pygame.sprite.Sprite):
+    def __init__(self, player, x, y):
+        super().__init__() 
+        self.surf = pygame.Surface((CELL_SIZE, CELL_SIZE))
+        self.surf.fill(P1_COLOR if player == 1 else P2_COLOR)
+        self.rect = self.surf.get_rect(topleft = (CELL_SIZE, CELL_SIZE))
+    
+        self.player = player
+        self.x = x
+        self.y = y
+
+    def check_collision(self, pickups):
+        player_collisions = pygame.sprite.spritecollide(self, players, False)
+        for p in player_collisions:
+            if p.player == self.player:
+                pos = pickups.pop()
+                pickups.insert(0, pos)
+                if p.player == 1:
+                    if pos[0]*CELL_SIZE == pickup2.x and pos[1]*CELL_SIZE == pickup2.y:
+                        pos = pickups.pop()
+                        pickups.insert(0, pos)
+                    p1.score += 1
+                else:
+                    if pos[0]*CELL_SIZE == pickup1.x and pos[1]*CELL_SIZE == pickup1.y:
+                        pos = pickups.pop()
+                        pickups.insert(0, pos)
+                    p2.score += 1
+                self.set_position(pos[0]*CELL_SIZE, pos[1]*CELL_SIZE)
+
+
+    def set_position(self, x, y):
+        self.x = x
+        self.y = y
+        self.rect.topleft = (self.x, self.y)       
 
 class Player(pygame.sprite.Sprite):
     def __init__(self, player, x, y):
@@ -100,6 +132,7 @@ class Player(pygame.sprite.Sprite):
         self.cooldown = 0
         self.cooldown_max = COOLDOWN
         self.multiplier = 1
+        self.score = 0
 
     def create_bullet(self):
         Bullet(self)
@@ -148,12 +181,15 @@ class Player(pygame.sprite.Sprite):
 
         while pygame.sprite.spritecollide(self, walls, False):
                 self.set_position(self.x, self.y - previous_vertical_speed/abs(previous_vertical_speed))
-
-        hits_acid = pygame.sprite.spritecollide(self, acids, False)
-        if hits_acid:
-            if hits_acid[0].tolerance != self:
+        # Acid collision
+        hits = pygame.sprite.spritecollide(self, acids, False)
+        if hits:
+            if hits[0].tolerance != self:
                 self.respawn()
-
+        # Spike collision
+        if pygame.sprite.spritecollide(self, spikes, False):
+            self.respawn()
+        
         self.acc_x = 0
         self.acc_y = 0
         
@@ -164,13 +200,50 @@ class Player(pygame.sprite.Sprite):
         sp = random.choice(spawnpoints)
         self.set_position(sp[0]*CELL_SIZE + CELL_SIZE/2, sp[1] * CELL_SIZE)
         self.multiplier = 1
+        if self.player == 1:
+            p2.score += 1
+        else:
+            p1.score += 1
 
     def set_position(self, x, y):
         self.x = x
         self.y = y
         self.rect.center = (self.x, self.y)
 
+class Spike(pygame.sprite.Sprite):
+    def __init__(self, grid_x, grid_y):
+        super().__init__()
+        self.surf = pygame.Surface((CELL_SIZE, CELL_SIZE/2))
+        self.surf.fill((255, 128, 128))
+        self.rect = self.surf.get_rect(topleft = (grid_x * CELL_SIZE, grid_y * CELL_SIZE))
         
+        self.x = grid_x * CELL_SIZE
+        self.y = grid_y * CELL_SIZE
+
+class Teleport(pygame.sprite.Sprite):
+    def __init__(self, id, teleports, grid_x, grid_y):
+        super().__init__()
+        self.surf = pygame.Surface((CELL_SIZE, CELL_SIZE))
+        self.surf.fill((int(id)*20,int(id)*20,int(id)*15))
+        self.rect = self.surf.get_rect(topleft = (grid_x * CELL_SIZE, grid_y * CELL_SIZE))
+        
+        self.id = int(id)
+        teleports[self.id].append(self)
+        self.x = grid_x * CELL_SIZE
+        self.y = grid_y * CELL_SIZE
+        self.cooldown = 0
+
+    def check_collision(self, teleports):
+        self.cooldown += 1
+        if self.cooldown > 0:
+            player_collisions = pygame.sprite.spritecollide(self, players, False)
+            for p in player_collisions:
+                port = random.choice(teleports[self.id])
+                while port == self:
+                    port = random.choice(teleports[self.id])
+                p.set_position(port.x + CELL_SIZE/2, port.y)
+                port.cooldown = -FPS
+
 
 class Wall(pygame.sprite.Sprite):
     def __init__(self, grid_x, grid_y, acid = False):
@@ -185,7 +258,7 @@ class Wall(pygame.sprite.Sprite):
             self.rect = self.surf.get_rect(topleft = (grid_x * CELL_SIZE, grid_y * CELL_SIZE))
 
 def main():
-    global FPS_CLOCK, DISPLAY_SURFACE, BASIC_FONT, p1, p2, p1_kills, p2_kills, acids, walls, bullets, players
+    global FPS_CLOCK, DISPLAY_SURFACE, BASIC_FONT, p1, p2, pickup1, pickup2, acids, walls, bullets, s_pickups, players, s_teleports, spikes
 
     pygame.init()
     FPS_CLOCK = pygame.time.Clock()
@@ -196,13 +269,20 @@ def main():
     acids = pygame.sprite.Group()
     walls = pygame.sprite.Group()
     players = pygame.sprite.Group()
+    s_pickups = pygame.sprite.Group()
+    s_teleports = pygame.sprite.Group()
+    spikes = pygame.sprite.Group()
     p1 = Player(1, 0, 0)
     players.add(p1)
+    pickup1 = Pickup(1, 0, 0)
+    s_pickups.add(pickup1)
     p2 = Player(2, 0, 0)
     players.add(p2)
+    pickup2 = Pickup(2, 0, 0)
+    s_pickups.add(pickup2)
     bullets = []
 
-    start_game('level1.txt')
+    start_level('level1.txt')
 
     while True:
         for event in pygame.event.get():
@@ -247,57 +327,97 @@ def main():
         for bull in bullets:
             bull.move()
 
+        pickup1.check_collision(pickups)
+        pickup2.check_collision(pickups)
+
+        for port in teleports:
+            for p in port:
+                p.check_collision(teleports)
+
         DISPLAY_SURFACE.fill((0,0,0))
         #Temp
         for x in range(0, WINDOW_WIDTH, CELL_SIZE):
             pygame.draw.line(DISPLAY_SURFACE, (255,255,255), (x, 0), (x, WINDOW_HEIGHT))
         for y in range(0, WINDOW_HEIGHT, CELL_SIZE):
             pygame.draw.line(DISPLAY_SURFACE,  (255,255,255), (0, y), (WINDOW_WIDTH, y))        
-        
+        # Draw walls
         for wall in walls:
             DISPLAY_SURFACE.blit(wall.surf, wall.rect)
-
+        # Draw spikes
+        for spike in spikes:
+            DISPLAY_SURFACE.blit(spike.surf, spike.rect)
+        # Draw teleports
+        for teleport in s_teleports:
+            DISPLAY_SURFACE.blit(teleport.surf, teleport.rect)
+        # Draw players
         for player in players:
             DISPLAY_SURFACE.blit(player.surf, player.rect)
-
+        # Draw acid
         for acid in acids:
             DISPLAY_SURFACE.blit(acid.surf, acid.rect)        
-
+        # Draw bullets
         for bullet in bullets:
             DISPLAY_SURFACE.blit(bullet.surf, bullet.rect)
+        # Draw pickups
+        for pick in s_pickups:
+            DISPLAY_SURFACE.blit(pick.surf, pick.rect)
+
+        p1_score = BASIC_FONT.render(str(p1.score), True, (255, 255, 255))
+        DISPLAY_SURFACE.blit(p1_score, (TEXT_OFFSET, TEXT_OFFSET))
+        p2_score = BASIC_FONT.render(str(p2.score), True, (255, 255, 255))
+        DISPLAY_SURFACE.blit(p2_score, (WINDOW_WIDTH - p2_score.get_size()[0] - TEXT_OFFSET, TEXT_OFFSET))
 
         pygame.display.update()
         FPS_CLOCK.tick(FPS)
 
-def start_game(filename):
-    global spawnpoints
+def start_level(filename):
+    global pickups, spawnpoints, teleports
+    pickups = []
     spawnpoints = []
+    teleports = [[] for i in range(10)]
     with open(filename, 'r') as f:
         level_map = [line.strip() for line in f]
     for y in range(CELLS_Y):
         level_map[y] = list(level_map[y])
         for x in range(CELLS_X):
-            if level_map[y][x] == '#':
-                wall = Wall(x, y)
-                walls.add(wall)
-            elif level_map[y][x] == '_':
-                wall = Wall(x, y, True)
-                walls.add(wall)
-                acid = Acid(x, y)
-                acids.add(acid)
-                tolerance = acid.tolerance
-                while level_map[y][x + 1] == '_':
-                    x += 1
-                    level_map[y][x] = '-'
+            if level_map[y][x].isnumeric():
+                teleport = Teleport(level_map[y][x], teleports, x, y)
+                s_teleports.add(teleport)
+            else:
+                if level_map[y][x] == '#':
+                    wall = Wall(x, y)
+                    walls.add(wall)
+                elif level_map[y][x] == '_':
                     wall = Wall(x, y, True)
                     walls.add(wall)
-                    acid = Acid(x, y, tolerance)
+                    acid = Acid(x, y)
                     acids.add(acid)
-            elif level_map[y][x] == 'S':
-                spawnpoints.append((x, y))
+                    tolerance = acid.tolerance
+                    while level_map[y][x + 1] == '_':
+                        x += 1
+                        level_map[y][x] = '-'
+                        wall = Wall(x, y, True)
+                        walls.add(wall)
+                        acid = Acid(x, y, tolerance)
+                        acids.add(acid)
+                elif level_map[y][x] == 'P':
+                    pickups.append((x, y))
+                elif level_map[y][x] == 'T':
+                    spike = Spike(x, y)
+                    spikes.add(spike)
+                elif level_map[y][x] == 'S':
+                    spawnpoints.append((x, y))
+    # Pickups
+    random.shuffle(pickups)
+    pick1 = pickups.pop()
+    pick2 = pickups.pop()
+    pickup1.set_position(pick1[0] * CELL_SIZE, pick1[1] * CELL_SIZE)
+    pickup2.set_position(pick2[0] * CELL_SIZE, pick2[1] * CELL_SIZE)
+    pickups = [pick2] + [pick1] + pickups
+    # Spawnpoints
     random.shuffle(spawnpoints)
     p1.set_position(spawnpoints[0][0] * CELL_SIZE + CELL_SIZE/2, spawnpoints[0][1] * CELL_SIZE)
-    p2.set_position(spawnpoints[1][0] * CELL_SIZE + CELL_SIZE/2, spawnpoints[1][1] * CELL_SIZE)              
+    p2.set_position(spawnpoints[1][0] * CELL_SIZE + CELL_SIZE/2, spawnpoints[1][1] * CELL_SIZE)
 
 
 def terminate():
