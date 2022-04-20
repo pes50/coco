@@ -2,6 +2,7 @@ import random
 import pygame
 from pygame.locals import *
 import sys
+import os.path
 
 BASIC_FONT_SIZE = 32
 FPS = 60
@@ -17,18 +18,11 @@ COOLDOWN = FPS/3
 MULTIPLIER_ADD = 1.5
 MAX_MULTIPLIER = CELL_SIZE*3
 ACID_HEIGHT = 0.65
-ACID_NEUTRAL_COLOR = (40,40,255)
+NEUTRAL_COLOR = (40,40,255)
 P1_COLOR = (128,255,40)
 P2_COLOR = (255,128,40)
 TEXT_OFFSET = 5
-
-""" Generate level template
-with open('level1.txt', 'w') as f:
-    for y in range(CELLS_Y):
-        for x in range(CELLS_X):
-            f.write('X')
-        f.write('\n')
-"""
+TARGET_SCORE = 10
 
 class Acid(pygame.sprite.Sprite):
     def __init__(self, grid_x, grid_y, tolerance = -1):
@@ -38,11 +32,10 @@ class Acid(pygame.sprite.Sprite):
         if self.tolerance == -1:
             self.tolerance = random.choice((None, p1, p2))
         if self.tolerance == None:
-            self.surf.fill(ACID_NEUTRAL_COLOR)
+            self.surf.fill(NEUTRAL_COLOR)
         else:
             self.surf.fill(P1_COLOR if self.tolerance == p1 else P2_COLOR)
         self.rect = self.surf.get_rect(topleft = (grid_x * CELL_SIZE, grid_y * CELL_SIZE))
-
 
 class Bullet(pygame.sprite.Sprite):
     def __init__(self, player):
@@ -79,6 +72,42 @@ class Bullet(pygame.sprite.Sprite):
         if hits_wall or self.x < -CELL_SIZE or self.x > WINDOW_WIDTH + CELL_SIZE:
             self.kill()
             bullets.remove(self)
+
+class Laser(pygame.sprite.Sprite):
+    def __init__(self, grid_x, grid_y, tolerance = -1):
+        super().__init__()
+        self.grid_x = grid_x
+        self.grid_y = grid_y
+        self.surf = pygame.Surface((CELL_SIZE/2, CELL_SIZE))
+        self.set_tolerance(tolerance)
+        self.cooldown = -FPS*5
+        self.on = True
+        self.start = False
+        self.parts = []
+
+    def set_tolerance(self, tolerance = -1):
+        if tolerance == -1:
+            self.tolerance = random.choice((None, p1, p2))
+        else:
+            self.tolerance = tolerance
+        if self.tolerance == None:
+            self.surf.fill(NEUTRAL_COLOR)
+        else:
+            self.surf.fill(P1_COLOR if self.tolerance == p1 else P2_COLOR)
+        self.rect = self.surf.get_rect(topleft = (self.grid_x * CELL_SIZE + CELL_SIZE/4, self.grid_y * CELL_SIZE))
+
+    def step(self):
+        self.cooldown += 1
+        if self.cooldown == 0:
+            self.cooldown = -FPS*5
+            if self.on:
+                self.on = False
+            else:
+                self.on = True
+                if self.start:
+                    self.set_tolerance()
+
+    
 
 class Pickup(pygame.sprite.Sprite):
     def __init__(self, player, x, y):
@@ -186,6 +215,12 @@ class Player(pygame.sprite.Sprite):
         if hits:
             if hits[0].tolerance != self:
                 self.respawn()
+        # Laser collision
+        hits = pygame.sprite.spritecollide(self, lasers, False)
+        if hits:
+            if hits[0].on:
+                if hits[0].tolerance != self:
+                    self.respawn()
         # Spike collision
         if pygame.sprite.spritecollide(self, spikes, False):
             self.respawn()
@@ -216,19 +251,16 @@ class Spike(pygame.sprite.Sprite):
         self.surf = pygame.Surface((CELL_SIZE, CELL_SIZE/2))
         self.surf.fill((255, 128, 128))
         self.rect = self.surf.get_rect(topleft = (grid_x * CELL_SIZE, grid_y * CELL_SIZE))
-        
-        self.x = grid_x * CELL_SIZE
-        self.y = grid_y * CELL_SIZE
 
 class Teleport(pygame.sprite.Sprite):
-    def __init__(self, id, teleports, grid_x, grid_y):
+    def __init__(self, id, grid_x, grid_y):
         super().__init__()
         self.surf = pygame.Surface((CELL_SIZE, CELL_SIZE))
         self.surf.fill((int(id)*20,int(id)*20,int(id)*15))
         self.rect = self.surf.get_rect(topleft = (grid_x * CELL_SIZE, grid_y * CELL_SIZE))
         
         self.id = int(id)
-        teleports[self.id].append(self)
+        teleports.add(self)
         self.x = grid_x * CELL_SIZE
         self.y = grid_y * CELL_SIZE
         self.cooldown = 0
@@ -238,12 +270,16 @@ class Teleport(pygame.sprite.Sprite):
         if self.cooldown > 0:
             player_collisions = pygame.sprite.spritecollide(self, players, False)
             for p in player_collisions:
-                port = random.choice(teleports[self.id])
-                while port == self:
-                    port = random.choice(teleports[self.id])
-                p.set_position(port.x + CELL_SIZE/2, port.y)
-                port.cooldown = -FPS
-
+                options = []
+                for option in teleports:
+                    if option.id == self.id:
+                        if option != self:
+                            options.append(option)
+                if len(options) > 0:
+                    port = random.choice(options)
+                    p.set_position(port.x + CELL_SIZE/2, port.y)
+                    port.cooldown = -FPS
+                    self.cooldown = -FPS
 
 class Wall(pygame.sprite.Sprite):
     def __init__(self, grid_x, grid_y, acid = False):
@@ -258,7 +294,7 @@ class Wall(pygame.sprite.Sprite):
             self.rect = self.surf.get_rect(topleft = (grid_x * CELL_SIZE, grid_y * CELL_SIZE))
 
 def main():
-    global FPS_CLOCK, DISPLAY_SURFACE, BASIC_FONT, p1, p2, pickup1, pickup2, acids, walls, bullets, s_pickups, players, s_teleports, spikes
+    global FPS_CLOCK, DISPLAY_SURFACE, BASIC_FONT, p1, p2, pickup1, pickup2, acids, walls, bullets, s_pickups, players, teleports, spikes, lasers
 
     pygame.init()
     FPS_CLOCK = pygame.time.Clock()
@@ -270,8 +306,9 @@ def main():
     walls = pygame.sprite.Group()
     players = pygame.sprite.Group()
     s_pickups = pygame.sprite.Group()
-    s_teleports = pygame.sprite.Group()
+    teleports = pygame.sprite.Group()
     spikes = pygame.sprite.Group()
+    lasers = pygame.sprite.Group()
     p1 = Player(1, 0, 0)
     players.add(p1)
     pickup1 = Pickup(1, 0, 0)
@@ -282,8 +319,14 @@ def main():
     s_pickups.add(pickup2)
     bullets = []
 
-    start_level('level1.txt')
+    levels = 0
+    while os.path.exists('level' + str(levels + 1) + '.txt'):
+        levels += 1
+    while True:
+        start_level(f'level{random.randrange(1,levels+1)}.txt', teleports)
+        game_cycle()
 
+def game_cycle():
     while True:
         for event in pygame.event.get():
             if event.type == QUIT or (event.type == KEYUP and event.key == K_ESCAPE):
@@ -331,8 +374,15 @@ def main():
         pickup2.check_collision(pickups)
 
         for port in teleports:
-            for p in port:
-                p.check_collision(teleports)
+            port.check_collision(teleports)
+
+        for laser in lasers:
+            laser.step()
+            if laser.start:
+                for l in laser.parts:
+                    l.set_tolerance(laser.tolerance)
+
+
 
         DISPLAY_SURFACE.fill((0,0,0))
         #Temp
@@ -346,8 +396,12 @@ def main():
         # Draw spikes
         for spike in spikes:
             DISPLAY_SURFACE.blit(spike.surf, spike.rect)
+        # Draw lasers
+        for laser in lasers:
+            if laser.on:
+                DISPLAY_SURFACE.blit(laser.surf, laser.rect)
         # Draw teleports
-        for teleport in s_teleports:
+        for teleport in teleports:
             DISPLAY_SURFACE.blit(teleport.surf, teleport.rect)
         # Draw players
         for player in players:
@@ -368,25 +422,62 @@ def main():
         DISPLAY_SURFACE.blit(p2_score, (WINDOW_WIDTH - p2_score.get_size()[0] - TEXT_OFFSET, TEXT_OFFSET))
 
         pygame.display.update()
+        if p1.score == TARGET_SCORE and p2.score == TARGET_SCORE:
+            return None
+        if p1.score == TARGET_SCORE:
+            return 1
+        if p2.score == TARGET_SCORE:
+            return 2
         FPS_CLOCK.tick(FPS)
 
-def start_level(filename):
-    global pickups, spawnpoints, teleports
+def start_level(filename, teleports):
+    # Cleanup
+    p1.score = 0
+    p2.score = 0
+    for acid in acids:
+        acid.kill()
+        acids.remove(acid)
+    for laser in lasers:
+        laser.kill()
+        lasers.remove(laser)
+    for spike in spikes:
+        spike.kill()
+        spikes.remove(spike)
+    for teleport in teleports:
+        teleport.kill()
+        teleports.remove(teleport)
+    for wall in walls:
+        wall.kill()
+        walls.remove(wall)
+    global pickups, spawnpoints
     pickups = []
     spawnpoints = []
     teleports = [[] for i in range(10)]
     with open(filename, 'r') as f:
         level_map = [line.strip() for line in f]
+
     for y in range(CELLS_Y):
         level_map[y] = list(level_map[y])
+    for y in range(CELLS_Y):
         for x in range(CELLS_X):
             if level_map[y][x].isnumeric():
-                teleport = Teleport(level_map[y][x], teleports, x, y)
-                s_teleports.add(teleport)
+                tp = Teleport(level_map[y][x], x, y)
             else:
                 if level_map[y][x] == '#':
                     wall = Wall(x, y)
                     walls.add(wall)
+                elif level_map[y][x] == '|':
+                    laser = Laser(x,y)
+                    lasers.add(laser)
+                    laser.start = True
+                    tolerance = laser.tolerance 
+                    yy = y
+                    while level_map[yy + 1][x] == '|':
+                        yy += 1
+                        level_map[yy][x] = '-'
+                        l = Laser(x, yy, tolerance)
+                        lasers.add(l)
+                        laser.parts.append(l)
                 elif level_map[y][x] == '_':
                     wall = Wall(x, y, True)
                     walls.add(wall)
@@ -407,18 +498,18 @@ def start_level(filename):
                     spikes.add(spike)
                 elif level_map[y][x] == 'S':
                     spawnpoints.append((x, y))
+
     # Pickups
     random.shuffle(pickups)
     pick1 = pickups.pop()
     pick2 = pickups.pop()
-    pickup1.set_position(pick1[0] * CELL_SIZE, pick1[1] * CELL_SIZE)
+    pickup1.set_position(pick1[0] * CELL_SIZE,  pick1[1] * CELL_SIZE)
     pickup2.set_position(pick2[0] * CELL_SIZE, pick2[1] * CELL_SIZE)
     pickups = [pick2] + [pick1] + pickups
     # Spawnpoints
     random.shuffle(spawnpoints)
     p1.set_position(spawnpoints[0][0] * CELL_SIZE + CELL_SIZE/2, spawnpoints[0][1] * CELL_SIZE)
     p2.set_position(spawnpoints[1][0] * CELL_SIZE + CELL_SIZE/2, spawnpoints[1][1] * CELL_SIZE)
-
 
 def terminate():
     pygame.quit()
