@@ -20,7 +20,7 @@ Edit "template.txt" and rename it to "level" + next unused number ("level13.txt"
 | '_' | Acid |  
 | '#' | Wall |  
 | '0' - '9' | Teleport |  
-| 'P' | Pickup (Level must have at least 2) |  
+| 'P' | Pickup (Level must have at least 3) |  
 | 'S' | Spawnpoint (Level must have at least 2) |  
 | 'T' | Spike |  
 | 'X' | Nothing |

@@ -18,9 +18,9 @@ COOLDOWN = FPS/3
 MULTIPLIER_ADD = 1.5
 MAX_MULTIPLIER = CELL_SIZE*3
 ACID_HEIGHT = 0.65
-NEUTRAL_COLOR = (40,40,255)
-P1_COLOR = (128,255,40)
-P2_COLOR = (255,128,40)
+NEUTRAL_COLOR = (40,255,40)
+P1_COLOR = (255,40,40)
+P2_COLOR = (40,40,255)
 TEXT_OFFSET = 5
 TARGET_SCORE = 10
 
@@ -239,6 +239,7 @@ class Player(pygame.sprite.Sprite):
             p2.score += 1
         else:
             p1.score += 1
+            pygame.mouse.set_pos((self.x,self.y))
 
     def set_position(self, x, y):
         self.x = x
@@ -278,6 +279,8 @@ class Teleport(pygame.sprite.Sprite):
                 if len(options) > 0:
                     port = random.choice(options)
                     p.set_position(port.x + CELL_SIZE/2, port.y)
+                    if p.player == 2:
+                        pygame.mouse.set_pos((p.x, p.y))
                     port.cooldown = -FPS
                     self.cooldown = -FPS
 
@@ -285,12 +288,12 @@ class Wall(pygame.sprite.Sprite):
     def __init__(self, grid_x, grid_y, acid = False):
         super().__init__()
         if acid:
+            sprite = pygame.image.load("sprite/wall.png")
             self.surf = pygame.Surface((CELL_SIZE, CELL_SIZE*ACID_HEIGHT))
-            self.surf.fill((255,0,40))
+            self.surf.blit(sprite, (0, -(1-ACID_HEIGHT)*CELL_SIZE))
             self.rect = self.surf.get_rect(topleft = (grid_x * CELL_SIZE, grid_y * CELL_SIZE + CELL_SIZE*(1 - ACID_HEIGHT))) 
         else:
-            self.surf = pygame.Surface((CELL_SIZE, CELL_SIZE))
-            self.surf.fill((255,0,40))
+            self.surf = pygame.image.load("sprite/wall.png")
             self.rect = self.surf.get_rect(topleft = (grid_x * CELL_SIZE, grid_y * CELL_SIZE))
 
 def main():
@@ -384,12 +387,12 @@ def game_cycle():
 
 
 
-        DISPLAY_SURFACE.fill((0,0,0))
+        DISPLAY_SURFACE.fill((255,255,255))
         #Temp
         for x in range(0, WINDOW_WIDTH, CELL_SIZE):
-            pygame.draw.line(DISPLAY_SURFACE, (255,255,255), (x, 0), (x, WINDOW_HEIGHT))
+            pygame.draw.line(DISPLAY_SURFACE, (0,0,0), (x, 0), (x, WINDOW_HEIGHT))
         for y in range(0, WINDOW_HEIGHT, CELL_SIZE):
-            pygame.draw.line(DISPLAY_SURFACE,  (255,255,255), (0, y), (WINDOW_WIDTH, y))        
+            pygame.draw.line(DISPLAY_SURFACE,  (0,0,0), (0, y), (WINDOW_WIDTH, y))        
         # Draw walls
         for wall in walls:
             DISPLAY_SURFACE.blit(wall.surf, wall.rect)
@@ -429,6 +432,19 @@ def game_cycle():
         if p2.score == TARGET_SCORE:
             return 2
         FPS_CLOCK.tick(FPS)
+""" To do
+def show_game_over_screen(winner):
+    game_surface = DISPLAY_SURFACE.render("Draw!" if winner == None else "Player 1" if winner == 1 else 2, True, (255, 255, 255))
+    over_surface = game_over_font.render('Over', True, WHITE)
+    game_rect = game_surface.get_rect()
+    over_rect = over_surface.get_rect()
+    game_rect.midtop = (WINDOWWIDTH / 2, 10)
+    over_rect.midtop = (WINDOWWIDTH / 2, game_rect.height + 10 + 25)
+
+    DISPLAYSURF.blit(game_surface, game_rect)
+    DISPLAYSURF.blit(over_surface, over_rect)
+    wait_for_key_pressed()
+"""
 
 def start_level(filename, teleports):
     # Cleanup
@@ -510,6 +526,7 @@ def start_level(filename, teleports):
     random.shuffle(spawnpoints)
     p1.set_position(spawnpoints[0][0] * CELL_SIZE + CELL_SIZE/2, spawnpoints[0][1] * CELL_SIZE)
     p2.set_position(spawnpoints[1][0] * CELL_SIZE + CELL_SIZE/2, spawnpoints[1][1] * CELL_SIZE)
+    pygame.mouse.set_pos((p2.x,p2.y))
 
 def terminate():
     pygame.quit()
