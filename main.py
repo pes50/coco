@@ -1,4 +1,5 @@
 import random
+from unittest.mock import DEFAULT
 import pygame
 from pygame.locals import *
 import sys
@@ -23,6 +24,8 @@ P1_COLOR = (255,40,40)
 P2_COLOR = (40,40,255)
 TEXT_OFFSET = 5
 TARGET_SCORE = 10
+TEXT_COLOR = (255, 255, 255)
+TEXT_OUTLINE = (0, 0, 0)
 
 class Acid(pygame.sprite.Sprite):
     def __init__(self, grid_x, grid_y, tolerance = -1):
@@ -327,7 +330,8 @@ def main():
         levels += 1
     while True:
         start_level(f'level{random.randrange(1,levels+1)}.txt', teleports)
-        game_cycle()
+        winner = game_cycle()
+        show_game_over_screen(winner)
 
 def game_cycle():
     while True:
@@ -419,10 +423,7 @@ def game_cycle():
         for pick in s_pickups:
             DISPLAY_SURFACE.blit(pick.surf, pick.rect)
 
-        p1_score = BASIC_FONT.render(str(p1.score), True, (255, 255, 255))
-        DISPLAY_SURFACE.blit(p1_score, (TEXT_OFFSET, TEXT_OFFSET))
-        p2_score = BASIC_FONT.render(str(p2.score), True, (255, 255, 255))
-        DISPLAY_SURFACE.blit(p2_score, (WINDOW_WIDTH - p2_score.get_size()[0] - TEXT_OFFSET, TEXT_OFFSET))
+        draw_score()
 
         pygame.display.update()
         if p1.score == TARGET_SCORE and p2.score == TARGET_SCORE:
@@ -432,19 +433,41 @@ def game_cycle():
         if p2.score == TARGET_SCORE:
             return 2
         FPS_CLOCK.tick(FPS)
-""" To do
-def show_game_over_screen(winner):
-    game_surface = DISPLAY_SURFACE.render("Draw!" if winner == None else "Player 1" if winner == 1 else 2, True, (255, 255, 255))
-    over_surface = game_over_font.render('Over', True, WHITE)
-    game_rect = game_surface.get_rect()
-    over_rect = over_surface.get_rect()
-    game_rect.midtop = (WINDOWWIDTH / 2, 10)
-    over_rect.midtop = (WINDOWWIDTH / 2, game_rect.height + 10 + 25)
 
-    DISPLAYSURF.blit(game_surface, game_rect)
-    DISPLAYSURF.blit(over_surface, over_rect)
+def draw_score():
+    draw_text_outline(p1.score, TEXT_OFFSET, TEXT_OFFSET)
+    score_width = BASIC_FONT.render(str(p2.score), True, TEXT_COLOR).get_width()
+    draw_text_outline(p2.score, WINDOW_WIDTH - score_width - TEXT_OFFSET, TEXT_OFFSET)
+
+def draw_text_outline(text, x, y, origin = "topleft"):
+    text = str(text)
+    text_rect = BASIC_FONT.render(text, True, TEXT_OUTLINE)
+    if origin == "center":
+        x += text_rect.get_width()/2
+        y += text_rect.get_height()/2
+    elif origin == "midbottom":
+        x -= text_rect.get_width()/2
+        y -= text_rect.get_height()
+    elif origin == "midtop":
+        x -= text_rect.get_width()/2
+
+    DISPLAY_SURFACE.blit(text_rect, (x-1, y-1))
+    DISPLAY_SURFACE.blit(text_rect, (x+1, y+1))
+    DISPLAY_SURFACE.blit(text_rect, (x-1, y+1))
+    DISPLAY_SURFACE.blit(text_rect, (x+1, y-1))
+    text_rect = BASIC_FONT.render(text, True, TEXT_COLOR)
+    DISPLAY_SURFACE.blit(text_rect,(x, y))
+
+def show_game_over_screen(winner):
+    dark = pygame.Surface(DISPLAY_SURFACE.get_size()).convert_alpha()
+    dark.fill((0, 0, 0, 70))
+    DISPLAY_SURFACE.blit(dark, (0, 0))
+    draw_text_outline("Draw!" if winner == None else "Player 1" if winner == 1 else "Player 2", WINDOW_WIDTH/2, WINDOW_HEIGHT/2, "midbottom")
+
+    if winner != None:
+        draw_text_outline("is the WINNER!", WINDOW_WIDTH / 2, WINDOW_HEIGHT/2 + TEXT_OFFSET, "midtop")
+
     wait_for_key_pressed()
-"""
 
 def start_level(filename, teleports):
     # Cleanup
@@ -477,7 +500,7 @@ def start_level(filename, teleports):
     for y in range(CELLS_Y):
         for x in range(CELLS_X):
             if level_map[y][x].isnumeric():
-                tp = Teleport(level_map[y][x], x, y)
+                Teleport(level_map[y][x], x, y)
             else:
                 if level_map[y][x] == '#':
                     wall = Wall(x, y)
@@ -531,6 +554,18 @@ def start_level(filename, teleports):
 def terminate():
     pygame.quit()
     sys.exit()
+
+def wait_for_key_pressed():
+    while True:
+        for event in pygame.event.get():
+            if event.type == QUIT:
+                terminate()
+            if event.type == KEYDOWN:
+                if event.key == K_ESCAPE:
+                    terminate()
+                return
+        pygame.display.update()
+        FPS_CLOCK.tick(FPS)
 
 if __name__ == '__main__':
     main()
