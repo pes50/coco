@@ -149,15 +149,21 @@ class Pickup(pygame.sprite.Sprite):
 
 class Player(pygame.sprite.Sprite):
     def __init__(self, player, x, y):
-        super().__init__() 
-        self.surf = pygame.Surface((40, 80))
-        self.surf.fill(P1_COLOR if player == 1 else P2_COLOR)
-        self.rect = self.surf.get_rect(center = (20, 80))
+        super().__init__()
+        self.surf = [None for i in range(3)]
+        self.surf[0] = pygame.image.load(f"sprite/player{player}.png")
+        self.surf[1] = pygame.image.load(f"sprite/player{player}walk1.png")
+        self.surf[2] = pygame.image.load(f"sprite/player{player}walk2.png")
+
+        self.rect = self.surf[0].get_rect(center = (20, 80))
 
         self.player = player
         self.set_position(x, y)
         self.acc_x = 0
         self.acc_y = 0
+        self.acc_previous = 0
+        self.acc_this_frame = 0
+        self.walking_state = 0
         self.horizontal_speed = 0
         self.vertical_speed = 0
         self.direction = 1
@@ -228,6 +234,9 @@ class Player(pygame.sprite.Sprite):
         if pygame.sprite.spritecollide(self, spikes, False):
             self.respawn()
         
+        self.acc_this_frame = self.acc_x
+        if self.acc_x != 0:
+            self.acc_previous = self.acc_x
         self.acc_x = 0
         self.acc_y = 0
         
@@ -412,7 +421,17 @@ def game_cycle():
             DISPLAY_SURFACE.blit(teleport.surf, teleport.rect)
         # Draw players
         for player in players:
-            DISPLAY_SURFACE.blit(player.surf, player.rect)
+            if player.acc_this_frame != 0:
+                player.walking_state += 1
+                if player.walking_state == FPS/2:
+                    player.walking_state = 0
+                surf = player.surf[1 if player.walking_state < FPS/4 else 2].copy()
+            else:
+                surf = player.surf[0].copy()
+            if player.acc_previous == -PLAYER_SPEED:
+                surf = pygame.transform.flip(surf, True, False)
+            DISPLAY_SURFACE.blit(surf, player.rect)
+
         # Draw acid
         for acid in acids:
             DISPLAY_SURFACE.blit(acid.surf, acid.rect)        
@@ -524,6 +543,19 @@ def start_level(filename, teleports):
                     acids.add(acid)
                     tolerance = acid.tolerance
                     while level_map[y][x + 1] == '_':
+                        x += 1
+                        level_map[y][x] = '-'
+                        wall = Wall(x, y, True)
+                        walls.add(wall)
+                        acid = Acid(x, y, tolerance)
+                        acids.add(acid)
+                elif level_map[y][x] == '/':
+                    wall = Wall(x, y, True)
+                    walls.add(wall)
+                    acid = Acid(x, y, None)
+                    acids.add(acid)
+                    tolerance = acid.tolerance
+                    while level_map[y][x + 1] == '/':
                         x += 1
                         level_map[y][x] = '-'
                         wall = Wall(x, y, True)
