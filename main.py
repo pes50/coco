@@ -6,6 +6,7 @@ import sys
 import os.path
 
 BASIC_FONT_SIZE = 32
+BIG_FONT_SIZE = 64
 FPS = 60
 WINDOW_WIDTH = 1280
 WINDOW_HEIGHT = 720
@@ -43,13 +44,13 @@ class Acid(pygame.sprite.Sprite):
 class Bullet(pygame.sprite.Sprite):
     def __init__(self, player):
         super().__init__()
-        self.x = player.x
-        self.y = player.y - 10
+        self.x = player.x + player.direction * 10
+        self.y = player.y + 16
         self.player = player
         self.direction = player.direction
         self.surf = pygame.Surface((10, 4))
         self.surf.fill((255,255,40))
-        self.rect = self.surf.get_rect(center = (player.x, player.y) if self.direction == 1 else (player.x, player.y))
+        self.rect = self.surf.get_rect(center = (self.x, self.y))
         bullets.append(self)
     
     def move(self):
@@ -309,13 +310,17 @@ class Wall(pygame.sprite.Sprite):
             self.rect = self.surf.get_rect(topleft = (grid_x * CELL_SIZE, grid_y * CELL_SIZE))
 
 def main():
-    global FPS_CLOCK, DISPLAY_SURFACE, BASIC_FONT, p1, p2, pickup1, pickup2, acids, walls, bullets, s_pickups, players, teleports, spikes, lasers
+    global FPS_CLOCK, DISPLAY_SURFACE, BASIC_FONT, BIG_FONT, p1, p2, pickup1, pickup2, acids, walls, bullets, s_pickups, players, teleports, spikes, lasers
+
+    global background_level
+    background_level = pygame.image.load("sprite/background-level.png")
 
     pygame.init()
     FPS_CLOCK = pygame.time.Clock()
     DISPLAY_SURFACE = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
     pygame.display.set_caption('Hra')
     BASIC_FONT = pygame.font.Font('freesansbold.ttf', BASIC_FONT_SIZE)
+    BIG_FONT = pygame.font.Font('freesansbold.ttf', BIG_FONT_SIZE)
     # Sprite groups
     acids = pygame.sprite.Group()
     walls = pygame.sprite.Group()
@@ -333,14 +338,42 @@ def main():
     pickup2 = Pickup(2, 0, 0)
     s_pickups.add(pickup2)
     bullets = []
-
-    levels = 0
-    while os.path.exists('level' + str(levels + 1) + '.txt'):
-        levels += 1
+    
+    levels = first_screen()
     while True:
         start_level(f'level{random.randrange(1,levels+1)}.txt', teleports)
         winner = game_cycle()
         show_game_over_screen(winner)
+
+def first_screen():
+    levels = 0
+    while os.path.exists(f'level{levels + 1}.txt'):
+        levels += 1
+
+    for lvl in range(levels):
+        level = load_level(f'level{lvl + 1}.txt')
+        error = []
+        if len(level) != CELLS_Y:
+            error.append([{lvl + 1}, f'Invalid level height. Expected {CELLS_Y}, got {len(level)}.'])
+            level_error(error)
+
+        for row in level:
+            if len(row) != CELLS_X:
+                error.append([{lvl + 1}, f'Invalid row width. Expected {CELLS_X}, got {len(row)}.'])
+                level_error(error)
+
+    background_menu = pygame.image.load("sprite/background-menu.png")
+    DISPLAY_SURFACE.blit(background_menu, (0, 0))
+    draw_text_outline("Game", WINDOW_WIDTH/2, 100, origin = "midtop", font = BIG_FONT)
+
+    while True:
+        pygame.display.update()
+        FPS_CLOCK.tick(FPS)
+        wait_for_key_pressed()
+        return levels
+
+def level_error(error):
+    pass
 
 def game_cycle():
     while True:
@@ -400,12 +433,7 @@ def game_cycle():
 
 
 
-        DISPLAY_SURFACE.fill((255,255,255))
-        #Temp
-        for x in range(0, WINDOW_WIDTH, CELL_SIZE):
-            pygame.draw.line(DISPLAY_SURFACE, (0,0,0), (x, 0), (x, WINDOW_HEIGHT))
-        for y in range(0, WINDOW_HEIGHT, CELL_SIZE):
-            pygame.draw.line(DISPLAY_SURFACE,  (0,0,0), (0, y), (WINDOW_WIDTH, y))        
+        DISPLAY_SURFACE.blit(background_level, (0, 0)) 
         # Draw walls
         for wall in walls:
             DISPLAY_SURFACE.blit(wall.surf, wall.rect)
@@ -454,13 +482,16 @@ def game_cycle():
         FPS_CLOCK.tick(FPS)
 
 def draw_score():
-    draw_text_outline(p1.score, TEXT_OFFSET, TEXT_OFFSET)
+    draw_text_outline(p1.score, TEXT_OFFSET, TEXT_OFFSET, color = P1_COLOR)
     score_width = BASIC_FONT.render(str(p2.score), True, TEXT_COLOR).get_width()
-    draw_text_outline(p2.score, WINDOW_WIDTH - score_width - TEXT_OFFSET, TEXT_OFFSET)
+    draw_text_outline(p2.score, WINDOW_WIDTH - score_width - TEXT_OFFSET, TEXT_OFFSET, color = P2_COLOR)
 
-def draw_text_outline(text, x, y, origin = "topleft"):
+def draw_text_outline(text, x, y, origin = "topleft", color = TEXT_COLOR, font = None):
     text = str(text)
-    text_rect = BASIC_FONT.render(text, True, TEXT_OUTLINE)
+    if font == None:
+        font = BASIC_FONT
+    text_rect = font.render(text, True, TEXT_OUTLINE)
+
     if origin == "center":
         x += text_rect.get_width()/2
         y += text_rect.get_height()/2
@@ -474,7 +505,7 @@ def draw_text_outline(text, x, y, origin = "topleft"):
     DISPLAY_SURFACE.blit(text_rect, (x+1, y+1))
     DISPLAY_SURFACE.blit(text_rect, (x-1, y+1))
     DISPLAY_SURFACE.blit(text_rect, (x+1, y-1))
-    text_rect = BASIC_FONT.render(text, True, TEXT_COLOR)
+    text_rect = font.render(text, True, color)
     DISPLAY_SURFACE.blit(text_rect,(x, y))
 
 def show_game_over_screen(winner):
@@ -487,6 +518,14 @@ def show_game_over_screen(winner):
         draw_text_outline("is the WINNER!", WINDOW_WIDTH / 2, WINDOW_HEIGHT/2 + TEXT_OFFSET, "midtop")
 
     wait_for_key_pressed()
+
+def load_level(filename):
+    with open(filename, 'r') as f:
+        level_map = [line.strip() for line in f]
+
+    for y in range(CELLS_Y):
+        level_map[y] = list(level_map[y])
+    return level_map
 
 def start_level(filename, teleports):
     # Cleanup
@@ -511,11 +550,8 @@ def start_level(filename, teleports):
     pickups = []
     spawnpoints = []
     teleports = [[] for i in range(10)]
-    with open(filename, 'r') as f:
-        level_map = [line.strip() for line in f]
+    level_map = load_level(filename)
 
-    for y in range(CELLS_Y):
-        level_map[y] = list(level_map[y])
     for y in range(CELLS_Y):
         for x in range(CELLS_X):
             if level_map[y][x].isnumeric():
