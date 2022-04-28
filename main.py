@@ -1,12 +1,11 @@
 import random
-from unittest.mock import DEFAULT
 import pygame
 from pygame.locals import *
 import sys
 import os.path
 
 BASIC_FONT_SIZE = 32
-BIG_FONT_SIZE = 64
+BIG_FONT_SIZE = 128
 FPS = 60
 WINDOW_WIDTH = 1280
 WINDOW_HEIGHT = 720
@@ -27,6 +26,7 @@ TEXT_OFFSET = 5
 TARGET_SCORE = 10
 TEXT_COLOR = (255, 255, 255)
 TEXT_OUTLINE = (0, 0, 0)
+SELECTED_COLOR = (240,240, 30)
 
 class Acid(pygame.sprite.Sprite):
     def __init__(self, grid_x, grid_y, tolerance = -1):
@@ -116,8 +116,7 @@ class Laser(pygame.sprite.Sprite):
 class Pickup(pygame.sprite.Sprite):
     def __init__(self, player, x, y):
         super().__init__() 
-        self.surf = pygame.Surface((CELL_SIZE, CELL_SIZE))
-        self.surf.fill(P1_COLOR if player == 1 else P2_COLOR)
+        self.surf = pygame.image.load(f"sprite/pickup{player}.png")
         self.rect = self.surf.get_rect(topleft = (CELL_SIZE, CELL_SIZE))
     
         self.player = player
@@ -262,15 +261,13 @@ class Player(pygame.sprite.Sprite):
 class Spike(pygame.sprite.Sprite):
     def __init__(self, grid_x, grid_y):
         super().__init__()
-        self.surf = pygame.Surface((CELL_SIZE, CELL_SIZE/2))
-        self.surf.fill((255, 128, 128))
+        self.surf = pygame.image.load(f"sprite/spike.png")
         self.rect = self.surf.get_rect(topleft = (grid_x * CELL_SIZE, grid_y * CELL_SIZE))
 
 class Teleport(pygame.sprite.Sprite):
     def __init__(self, id, grid_x, grid_y):
         super().__init__()
-        self.surf = pygame.Surface((CELL_SIZE, CELL_SIZE))
-        self.surf.fill((int(id)*20,int(id)*20,int(id)*15))
+        self.surf = pygame.image.load(f"sprite/teleport{id}.png")
         self.rect = self.surf.get_rect(topleft = (grid_x * CELL_SIZE, grid_y * CELL_SIZE))
         
         self.id = int(id)
@@ -352,28 +349,100 @@ def first_screen():
 
     for lvl in range(levels):
         level = load_level(f'level{lvl + 1}.txt')
-        error = []
         if len(level) != CELLS_Y:
-            error.append([{lvl + 1}, f'Invalid level height. Expected {CELLS_Y}, got {len(level)}.'])
-            level_error(error)
+            level_error(f'Invalid level{lvl+1}.txt height. Expected {CELLS_Y}, got {len(level)}.')
 
         for row in level:
             if len(row) != CELLS_X:
-                error.append([{lvl + 1}, f'Invalid row width. Expected {CELLS_X}, got {len(row)}.'])
-                level_error(error)
+                level_error(f'Invalid level{lvl+1}.txt width. Expected {CELLS_X}, got {len(row)}.')
+
+        pick = 0
+        spawn = 0
+        for y in range(CELLS_Y):
+            for x in range(CELLS_X):
+                if level[y][x] == 'P':
+                    pick += 1
+                elif level[y][x] == 'S':
+                    if y == 0:
+                        spawn += 1
+                    elif level[y-1][x] == 'X':
+                        spawn += 1
+                    else:
+                        level_error(f'Spawnpoint in level{lvl+1}.txt is not safe for respawn.')
 
     background_menu = pygame.image.load("sprite/background-menu.png")
     DISPLAY_SURFACE.blit(background_menu, (0, 0))
     draw_text_outline("Game", WINDOW_WIDTH/2, 100, origin = "midtop", font = BIG_FONT)
+    font_start = pygame.font.Font('freesansbold.ttf', 75)
+
+    p1_img = pygame.image.load("sprite/player1.png")
+    p1_img = pygame.transform.scale(p1_img, (CELL_SIZE*4, CELL_SIZE*4*2))
+    p1_rect = p1_img.get_rect()
+    p1_rect.bottomleft = (TEXT_OFFSET, WINDOW_HEIGHT - TEXT_OFFSET)
+    DISPLAY_SURFACE.blit(p1_img, p1_rect)
+
+    p2_img = pygame.image.load("sprite/player2.png")
+    p2_img = pygame.transform.scale(p2_img, (CELL_SIZE*4, CELL_SIZE*4*2))
+    p2_img = p2_img = pygame.transform.flip(p2_img, True, False)
+    p2_rect = p2_img.get_rect()
+    p2_rect.bottomright = (WINDOW_WIDTH - TEXT_OFFSET, WINDOW_HEIGHT - TEXT_OFFSET)
+    DISPLAY_SURFACE.blit(p2_img, p2_rect)
 
     while True:
+        font_rect = draw_text_outline("Start", WINDOW_WIDTH/2, 450, origin= "midtop", font = font_start)
+        for event in pygame.event.get():
+            if event.type == MOUSEBUTTONUP:
+                if  mouse_x > font_rect.x and mouse_x < font_rect.x + font_rect.width and mouse_y > font_rect.y and mouse_y < font_rect.y + font_rect.height:
+                    return levels
+            if event.type == QUIT:
+                terminate()
+            if event.type == KEYDOWN:
+                if event.key == K_ESCAPE:
+                    terminate()
+
+        mouse_x, mouse_y = pygame.mouse.get_pos()
+        if mouse_x > font_rect.x and mouse_x < font_rect.x + font_rect.width and mouse_y > font_rect.y and mouse_y < font_rect.y + font_rect.height:
+            draw_text_outline("Start", WINDOW_WIDTH/2, 450, origin= "midtop", font = font_start, color = SELECTED_COLOR)
         pygame.display.update()
         FPS_CLOCK.tick(FPS)
-        wait_for_key_pressed()
-        return levels
 
 def level_error(error):
-    pass
+    background_error = pygame.image.load("sprite/background-menu.png")
+    DISPLAY_SURFACE.blit(background_error, (0, 0))
+    draw_text_outline("Oh no...", WINDOW_WIDTH/2, 100, origin = "midtop", font = BIG_FONT)
+    font_start = pygame.font.Font('freesansbold.ttf', 75)
+
+    p1_img = pygame.image.load("sprite/player1.png")
+    p1_img = pygame.transform.scale(p1_img, (CELL_SIZE*4, CELL_SIZE*4*2))
+    p1_rect = p1_img.get_rect()
+    p1_rect.bottomleft = (TEXT_OFFSET, WINDOW_HEIGHT - TEXT_OFFSET)
+    DISPLAY_SURFACE.blit(p1_img, p1_rect)
+
+    p2_img = pygame.image.load("sprite/player2.png")
+    p2_img = pygame.transform.scale(p2_img, (CELL_SIZE*4, CELL_SIZE*4*2))
+    p2_img = p2_img = pygame.transform.flip(p2_img, True, False)
+    p2_rect = p2_img.get_rect()
+    p2_rect.bottomright = (WINDOW_WIDTH - TEXT_OFFSET, WINDOW_HEIGHT - TEXT_OFFSET)
+    DISPLAY_SURFACE.blit(p2_img, p2_rect)
+
+    while True:
+        draw_text_outline(error, WINDOW_WIDTH/2, 300, origin= "midtop")
+        font_rect = draw_text_outline("Ok", WINDOW_WIDTH/2, 450, origin= "midtop", font = font_start)
+        for event in pygame.event.get():
+            if event.type == MOUSEBUTTONUP:
+                if  mouse_x > font_rect.x and mouse_x < font_rect.x + font_rect.width and mouse_y > font_rect.y and mouse_y < font_rect.y + font_rect.height:
+                    terminate()
+            if event.type == QUIT:
+                terminate()
+            if event.type == KEYDOWN:
+                if event.key == K_ESCAPE:
+                    terminate()
+
+        mouse_x, mouse_y = pygame.mouse.get_pos()
+        if mouse_x > font_rect.x and mouse_x < font_rect.x + font_rect.width and mouse_y > font_rect.y and mouse_y < font_rect.y + font_rect.height:
+            draw_text_outline("Ok", WINDOW_WIDTH/2, 450, origin= "midtop", font = font_start, color = (240, 10, 10))
+        pygame.display.update()
+        FPS_CLOCK.tick(FPS)
 
 def game_cycle():
     while True:
@@ -482,31 +551,39 @@ def game_cycle():
         FPS_CLOCK.tick(FPS)
 
 def draw_score():
-    draw_text_outline(p1.score, TEXT_OFFSET, TEXT_OFFSET, color = P1_COLOR)
-    score_width = BASIC_FONT.render(str(p2.score), True, TEXT_COLOR).get_width()
-    draw_text_outline(p2.score, WINDOW_WIDTH - score_width - TEXT_OFFSET, TEXT_OFFSET, color = P2_COLOR)
+    draw_text_outline(p1.score, TEXT_OFFSET, TEXT_OFFSET, color = P1_COLOR, origin="topleft")
+    draw_text_outline(p2.score, WINDOW_WIDTH - TEXT_OFFSET, TEXT_OFFSET, color = P2_COLOR, origin="topright")
 
 def draw_text_outline(text, x, y, origin = "topleft", color = TEXT_COLOR, font = None):
     text = str(text)
     if font == None:
         font = BASIC_FONT
-    text_rect = font.render(text, True, TEXT_OUTLINE)
+
+    text_surf = font.render(text, True, TEXT_OUTLINE)
+    text_rect = text_surf.get_rect()
 
     if origin == "center":
-        x += text_rect.get_width()/2
-        y += text_rect.get_height()/2
+        text_rect.center = (x, y)
     elif origin == "midbottom":
-        x -= text_rect.get_width()/2
-        y -= text_rect.get_height()
+        text_rect.midbottom = (x, y)
+    elif origin == "topright":
+        text_rect.topright = (x, y)
+    elif origin == "topleft":
+        text_rect.topleft = (x, y)
     elif origin == "midtop":
-        x -= text_rect.get_width()/2
+        text_rect.midtop = (x, y)
 
-    DISPLAY_SURFACE.blit(text_rect, (x-1, y-1))
-    DISPLAY_SURFACE.blit(text_rect, (x+1, y+1))
-    DISPLAY_SURFACE.blit(text_rect, (x-1, y+1))
-    DISPLAY_SURFACE.blit(text_rect, (x+1, y-1))
-    text_rect = font.render(text, True, color)
-    DISPLAY_SURFACE.blit(text_rect,(x, y))
+    xx = text_rect.x
+    yy = text_rect.y
+
+    DISPLAY_SURFACE.blit(text_surf, (xx-1, yy-1))
+    DISPLAY_SURFACE.blit(text_surf, (xx+1, yy+1))
+    DISPLAY_SURFACE.blit(text_surf, (xx-1, yy+1))
+    DISPLAY_SURFACE.blit(text_surf, (xx+1, yy-1))
+
+    text_surf = font.render(text, True, color)
+    DISPLAY_SURFACE.blit(text_surf,text_rect)
+    return text_rect
 
 def show_game_over_screen(winner):
     dark = pygame.Surface(DISPLAY_SURFACE.get_size()).convert_alpha()
@@ -517,7 +594,7 @@ def show_game_over_screen(winner):
     if winner != None:
         draw_text_outline("is the WINNER!", WINDOW_WIDTH / 2, WINDOW_HEIGHT/2 + TEXT_OFFSET, "midtop")
 
-    wait_for_key_pressed()
+    wait_for_key_released()
 
 def load_level(filename):
     with open(filename, 'r') as f:
@@ -623,12 +700,12 @@ def terminate():
     pygame.quit()
     sys.exit()
 
-def wait_for_key_pressed():
+def wait_for_key_released():
     while True:
         for event in pygame.event.get():
             if event.type == QUIT:
                 terminate()
-            if event.type == KEYDOWN:
+            if event.type == KEYUP:
                 if event.key == K_ESCAPE:
                     terminate()
                 return
