@@ -48,8 +48,7 @@ class Bullet(pygame.sprite.Sprite):
         self.y = player.y + 16
         self.player = player
         self.direction = player.direction
-        self.surf = pygame.Surface((10, 4))
-        self.surf.fill((255,255,40))
+        self.surf = pygame.image.load("sprite/bullet.png")
         self.rect = self.surf.get_rect(center = (self.x, self.y))
         bullets.append(self)
     
@@ -116,12 +115,19 @@ class Laser(pygame.sprite.Sprite):
 class Pickup(pygame.sprite.Sprite):
     def __init__(self, player, x, y):
         super().__init__() 
-        self.surf = pygame.image.load(f"sprite/pickup{player}.png")
-        self.rect = self.surf.get_rect(topleft = (CELL_SIZE, CELL_SIZE))
+        self.surf = [None for i in range(4)]
+        self.surf[0] = pygame.image.load(f"sprite/pickup{player}0.png")
+        self.surf[1] = pygame.image.load(f"sprite/pickup{player}1.png")
+        self.surf[2] = pygame.image.load(f"sprite/pickup{player}2.png")
+        self.surf[3] = pygame.image.load(f"sprite/pickup{player}3.png")
+        self.rect = self.surf[0].get_rect(topleft = (CELL_SIZE, CELL_SIZE))
     
         self.player = player
         self.x = x
         self.y = y
+        self.counter = 0
+        self.up = True
+        self.y_offset = 0
 
     def check_collision(self, pickups):
         player_collisions = pygame.sprite.spritecollide(self, players, False)
@@ -145,15 +151,21 @@ class Pickup(pygame.sprite.Sprite):
     def set_position(self, x, y):
         self.x = x
         self.y = y
+        self.y_offset = 0
+        self.counter = 0
+        self.up = True
         self.rect.topleft = (self.x, self.y)       
 
 class Player(pygame.sprite.Sprite):
     def __init__(self, player, x, y):
         super().__init__()
-        self.surf = [None for i in range(3)]
+        self.surf = [None for i in range(4)]
         self.surf[0] = pygame.image.load(f"sprite/player{player}.png")
         self.surf[1] = pygame.image.load(f"sprite/player{player}walk1.png")
         self.surf[2] = pygame.image.load(f"sprite/player{player}walk2.png")
+        self.surf[3] = pygame.image.load(f"sprite/player{player}fall.png")
+
+        self.ball = pygame.image.load(f"sprite/player{player}ball.png")
 
         self.rect = self.surf[0].get_rect(center = (20, 80))
 
@@ -171,6 +183,7 @@ class Player(pygame.sprite.Sprite):
         self.cooldown_max = COOLDOWN
         self.multiplier = 1
         self.score = 0
+        self.y_previous = 0
 
     def create_bullet(self):
         Bullet(self)
@@ -178,6 +191,7 @@ class Player(pygame.sprite.Sprite):
     def step(self):
         previous_horizontal_speed = 0
         previous_vertical_speed = 0
+        self.y_previous = self.y
 
         if self.cooldown > 0:
             self.cooldown -= 1
@@ -518,7 +532,11 @@ def game_cycle():
             DISPLAY_SURFACE.blit(teleport.surf, teleport.rect)
         # Draw players
         for player in players:
-            if player.acc_this_frame != 0:
+            if player.y > player.y_previous:
+                surf = player.surf[3].copy()
+                ball_rect = player.ball.get_rect(midbottom = player.rect.midtop)
+                DISPLAY_SURFACE.blit(player.ball, ball_rect)
+            elif player.acc_this_frame != 0:
                 player.walking_state += 1
                 if player.walking_state == FPS/2:
                     player.walking_state = 0
@@ -537,7 +555,28 @@ def game_cycle():
             DISPLAY_SURFACE.blit(bullet.surf, bullet.rect)
         # Draw pickups
         for pick in s_pickups:
-            DISPLAY_SURFACE.blit(pick.surf, pick.rect)
+            pick.counter += 1
+            if pick.counter == FPS*2:
+                pick.counter = 0
+            
+            if pick.counter < 5:
+                surf = pick.surf[1].copy()
+            elif pick.counter >= 5 and pick.counter < 10:
+                surf = pick.surf[2].copy()
+            elif pick.counter > 10 and pick.counter < 15:
+                surf = pick.surf[3].copy()
+            else:
+                surf = pick.surf[0].copy()
+
+            if pick.counter % 10 == 0:
+                pick.y_offset += -1 if pick.up > 0 else 1
+
+            if pick.y_offset == 0:
+                pick.up = True
+            if pick.y_offset == -7:
+                pick.up = False
+
+            DISPLAY_SURFACE.blit(surf, (pick.rect.x, pick.rect.y + pick.y_offset))
 
         draw_score()
 
