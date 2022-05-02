@@ -27,6 +27,7 @@ TARGET_SCORE = 10
 TEXT_COLOR = (255, 255, 255)
 TEXT_OUTLINE = (0, 0, 0)
 SELECTED_COLOR = (240,240, 30)
+TELEPORT_LINE_OFFSET = 15
 
 class Acid(pygame.sprite.Sprite):
     def __init__(self, grid_x, grid_y, tolerance = -1):
@@ -151,9 +152,6 @@ class Pickup(pygame.sprite.Sprite):
     def set_position(self, x, y):
         self.x = x
         self.y = y
-        self.y_offset = 0
-        self.counter = 0
-        self.up = True
         self.rect.topleft = (self.x, self.y)       
 
 class Player(pygame.sprite.Sprite):
@@ -184,6 +182,7 @@ class Player(pygame.sprite.Sprite):
         self.multiplier = 1
         self.score = 0
         self.y_previous = 0
+        self.respawn_counter = 0
 
     def create_bullet(self):
         Bullet(self)
@@ -192,6 +191,7 @@ class Player(pygame.sprite.Sprite):
         previous_horizontal_speed = 0
         previous_vertical_speed = 0
         self.y_previous = self.y
+        self.respawn_counter += 1
 
         if self.cooldown > 0:
             self.cooldown -= 1
@@ -259,12 +259,13 @@ class Player(pygame.sprite.Sprite):
     
     def respawn(self):
         sp = random.choice(spawnpoints)
+        if self.score > 0:
+            self.score -= 1
+            score_alert.append(["-1", self.x + CELL_SIZE*0.75, self.y - CELL_SIZE*0.75, P1_COLOR if self.player == 1 else P2_COLOR, 0])
         self.set_position(sp[0]*CELL_SIZE + CELL_SIZE/2, sp[1] * CELL_SIZE)
         self.multiplier = 1
-        if self.player == 1:
-            p2.score += 1
-        else:
-            p1.score += 1
+        self.respawn_counter = 0
+        if self.player == 2:
             pygame.mouse.set_pos((self.x,self.y))
 
     def set_position(self, x, y):
@@ -281,8 +282,11 @@ class Spike(pygame.sprite.Sprite):
 class Teleport(pygame.sprite.Sprite):
     def __init__(self, id, grid_x, grid_y):
         super().__init__()
-        self.surf = pygame.image.load(f"sprite/teleport{id}.png")
-        self.rect = self.surf.get_rect(topleft = (grid_x * CELL_SIZE, grid_y * CELL_SIZE))
+        self.surf = [None, None]
+        self.surf[0] = pygame.image.load(f"sprite/teleport{id}0.png")
+        self.surf[1] = pygame.image.load(f"sprite/teleport{id}1.png")
+        self.rect = self.surf[0].get_rect(topleft = (grid_x * CELL_SIZE, grid_y * CELL_SIZE))
+        self.counter = 0
         
         self.id = int(id)
         teleports.add(self)
@@ -291,8 +295,10 @@ class Teleport(pygame.sprite.Sprite):
         self.cooldown = 0
 
     def check_collision(self, teleports):
-        self.cooldown += 1
-        if self.cooldown > 0:
+        self.counter += 1
+        if self.counter == FPS:
+            self.counter = 0
+        if self.cooldown >= 0:
             player_collisions = pygame.sprite.spritecollide(self, players, False)
             for p in player_collisions:
                 options = []
@@ -305,8 +311,13 @@ class Teleport(pygame.sprite.Sprite):
                     p.set_position(port.x + CELL_SIZE/2, port.y)
                     if p.player == 2:
                         pygame.mouse.set_pos((p.x, p.y))
-                    port.cooldown = -FPS
+                    
+                    just_teleported.append([self, port, P1_COLOR if p.player == 1 else P2_COLOR, 0])
+
+                    for o in options:
+                        o.cooldown = -FPS
                     self.cooldown = -FPS
+                    return
 
 class Wall(pygame.sprite.Sprite):
     def __init__(self, grid_x, grid_y, acid = False):
@@ -321,10 +332,9 @@ class Wall(pygame.sprite.Sprite):
             self.rect = self.surf.get_rect(topleft = (grid_x * CELL_SIZE, grid_y * CELL_SIZE))
 
 def main():
-    global FPS_CLOCK, DISPLAY_SURFACE, BASIC_FONT, BIG_FONT, p1, p2, pickup1, pickup2, acids, walls, bullets, s_pickups, players, teleports, spikes, lasers
+    global FPS_CLOCK, DISPLAY_SURFACE, BASIC_FONT, BIG_FONT, p1, p2, pickup1, pickup2, acids, walls, bullets, s_pickups, players, teleports, spikes, lasers, just_teleported
 
-    global background_level
-    background_level = pygame.image.load("sprite/background-level.png")
+    global background_level, teleport_ball, teleport_on_cooldown, score_alert
 
     pygame.init()
     FPS_CLOCK = pygame.time.Clock()
@@ -332,6 +342,10 @@ def main():
     pygame.display.set_caption('Hra')
     BASIC_FONT = pygame.font.Font('freesansbold.ttf', BASIC_FONT_SIZE)
     BIG_FONT = pygame.font.Font('freesansbold.ttf', BIG_FONT_SIZE)
+
+    background_level = pygame.image.load("sprite/background-level.png")
+    teleport_ball = pygame.image.load("sprite/teleport-ball.png")
+    teleport_on_cooldown = pygame.image.load("sprite/teleport.png")
     # Sprite groups
     acids = pygame.sprite.Group()
     walls = pygame.sprite.Group()
@@ -349,6 +363,8 @@ def main():
     pickup2 = Pickup(2, 0, 0)
     s_pickups.add(pickup2)
     bullets = []
+    just_teleported = []
+    score_alert = []
     
     levels = first_screen()
     while True:
@@ -507,6 +523,9 @@ def game_cycle():
 
         for port in teleports:
             port.check_collision(teleports)
+        
+        for port in teleports:
+            port.cooldown += 1
 
         for laser in lasers:
             laser.step()
@@ -514,25 +533,49 @@ def game_cycle():
                 for l in laser.parts:
                     l.set_tolerance(laser.tolerance)
 
-
-
+        ## Drawing
+        # Draw background
         DISPLAY_SURFACE.blit(background_level, (0, 0)) 
+
         # Draw walls
         for wall in walls:
             DISPLAY_SURFACE.blit(wall.surf, wall.rect)
+
         # Draw spikes
         for spike in spikes:
             DISPLAY_SURFACE.blit(spike.surf, spike.rect)
+
         # Draw lasers
         for laser in lasers:
             if laser.on:
                 DISPLAY_SURFACE.blit(laser.surf, laser.rect)
+
+        # Draw score update
+        for scr in score_alert:
+            if scr[4] == 20:
+                score_alert.remove(scr)
+            elif scr[4] < 20:
+                draw_text_outline(scr[0], scr[1], scr[2] - scr[4]/2, color = scr[3], alpha = 255 - scr[4]*9)
+                scr[4] += 1
+
         # Draw teleports
+        for line in just_teleported:
+            if line[3] == 20:
+                just_teleported.remove(line)
+            elif line[3] < 20:
+                pygame.draw.line(DISPLAY_SURFACE, line[2], (line[0].rect.x + CELL_SIZE/2, line[0].rect.y - TELEPORT_LINE_OFFSET), (line[1].rect.x + CELL_SIZE/2, line[1].rect.y - TELEPORT_LINE_OFFSET), width = 21 - line[3])
+                line[3] += 1
+
         for teleport in teleports:
-            DISPLAY_SURFACE.blit(teleport.surf, teleport.rect)
+            if teleport.cooldown < 0:
+                DISPLAY_SURFACE.blit(teleport_on_cooldown, teleport.rect)
+            else:
+                DISPLAY_SURFACE.blit(teleport.surf[0 if teleport.counter < FPS/2 else 1], teleport.rect)
+            DISPLAY_SURFACE.blit(teleport_ball, teleport_ball.get_rect(midbottom = teleport.rect.midtop))
+
         # Draw players
         for player in players:
-            if player.y > player.y_previous:
+            if player.y > player.y_previous + 7:
                 surf = player.surf[3].copy()
                 ball_rect = player.ball.get_rect(midbottom = player.rect.midtop)
                 DISPLAY_SURFACE.blit(player.ball, ball_rect)
@@ -549,10 +592,12 @@ def game_cycle():
 
         # Draw acid
         for acid in acids:
-            DISPLAY_SURFACE.blit(acid.surf, acid.rect)        
+            DISPLAY_SURFACE.blit(acid.surf, acid.rect)   
+
         # Draw bullets
         for bullet in bullets:
             DISPLAY_SURFACE.blit(bullet.surf, bullet.rect)
+
         # Draw pickups
         for pick in s_pickups:
             pick.counter += 1
@@ -578,6 +623,12 @@ def game_cycle():
 
             DISPLAY_SURFACE.blit(surf, (pick.rect.x, pick.rect.y + pick.y_offset))
 
+        # Draw respawn circle
+        for p in players:
+            if p.respawn_counter < FPS/2:
+                pygame.draw.circle(DISPLAY_SURFACE, P1_COLOR if p.player == 1 else P2_COLOR, (p.x, p.y), (p.respawn_counter**2), width = 8)
+        
+        # Draw score
         draw_score()
 
         pygame.display.update()
@@ -593,13 +644,16 @@ def draw_score():
     draw_text_outline(p1.score, TEXT_OFFSET, TEXT_OFFSET, color = P1_COLOR, origin="topleft")
     draw_text_outline(p2.score, WINDOW_WIDTH - TEXT_OFFSET, TEXT_OFFSET, color = P2_COLOR, origin="topright")
 
-def draw_text_outline(text, x, y, origin = "topleft", color = TEXT_COLOR, font = None):
+def draw_text_outline(text, x, y, origin = "topleft", color = TEXT_COLOR, font = None, alpha = None):
     text = str(text)
     if font == None:
         font = BASIC_FONT
 
     text_surf = font.render(text, True, TEXT_OUTLINE)
     text_rect = text_surf.get_rect()
+
+    if alpha != None:
+        text_surf.set_alpha(alpha)
 
     if origin == "center":
         text_rect.center = (x, y)
@@ -621,7 +675,11 @@ def draw_text_outline(text, x, y, origin = "topleft", color = TEXT_COLOR, font =
     DISPLAY_SURFACE.blit(text_surf, (xx+1, yy-1))
 
     text_surf = font.render(text, True, color)
+    if alpha != None:
+        text_surf.set_alpha(alpha)
     DISPLAY_SURFACE.blit(text_surf,text_rect)
+
+
     return text_rect
 
 def show_game_over_screen(winner):
@@ -647,6 +705,8 @@ def start_level(filename, teleports):
     # Cleanup
     p1.score = 0
     p2.score = 0
+    just_teleported = []
+    score_alert = []
     for acid in acids:
         acid.kill()
         acids.remove(acid)
