@@ -4,30 +4,39 @@ from pygame.locals import *
 import sys
 import os.path
 
-BASIC_FONT_SIZE = 32
-BIG_FONT_SIZE = 128
+# Colors
+NEUTRAL_COLOR = (40,255,40)
+P1_COLOR = (255,40,40)
+P2_COLOR = (40,40,255)
+
+# Game
 FPS = 60
 WINDOW_WIDTH = 1280
 WINDOW_HEIGHT = 720
 CELL_SIZE = 40
 CELLS_X = int(WINDOW_WIDTH / CELL_SIZE)
 CELLS_Y = int(WINDOW_HEIGHT / CELL_SIZE)
+GRAVITY = 1
+TARGET_SCORE = 10
+
+# Objects
+ACID_HEIGHT = 0.65
+TELEPORT_LINE_OFFSET = 15
+
+# Player
 PLAYER_SPEED = 3
 PLAYER_JUMP_SPEED = 20
-GRAVITY = 1
 COOLDOWN = FPS/3
 MULTIPLIER_ADD = 1.5
 MAX_MULTIPLIER = CELL_SIZE*3
-ACID_HEIGHT = 0.65
-NEUTRAL_COLOR = (40,255,40)
-P1_COLOR = (255,40,40)
-P2_COLOR = (40,40,255)
-TEXT_OFFSET = 5
-TARGET_SCORE = 10
+
+# Text
+BASIC_FONT_SIZE = 32
+BIG_FONT_SIZE = 128
 TEXT_COLOR = (255, 255, 255)
 TEXT_OUTLINE = (0, 0, 0)
 SELECTED_COLOR = (240,240, 30)
-TELEPORT_LINE_OFFSET = 15
+TEXT_OFFSET = 5
 
 class Acid(pygame.sprite.Sprite):
     def __init__(self, grid_x, grid_y, tolerance = -1):
@@ -146,6 +155,7 @@ class Pickup(pygame.sprite.Sprite):
                         pos = pickups.pop()
                         pickups.insert(0, pos)
                     p2.score += 1
+                score_alert.append(["+1", self.x + CELL_SIZE*0.75, self.y - CELL_SIZE*0.75, P1_COLOR if self.player == 1 else P2_COLOR, 0])
                 self.set_position(pos[0]*CELL_SIZE, pos[1]*CELL_SIZE)
 
 
@@ -362,12 +372,12 @@ def main():
     players.add(p2)
     pickup2 = Pickup(2, 0, 0)
     s_pickups.add(pickup2)
-    bullets = []
-    just_teleported = []
-    score_alert = []
     
     levels = first_screen()
     while True:
+        bullets = []
+        just_teleported = []
+        score_alert = []
         start_level(f'level{random.randrange(1,levels+1)}.txt', teleports)
         winner = game_cycle()
         show_game_over_screen(winner)
@@ -549,7 +559,9 @@ def game_cycle():
         for laser in lasers:
             if laser.on:
                 DISPLAY_SURFACE.blit(laser.surf, laser.rect)
-
+            elif laser.cooldown > -FPS:
+                pygame.draw.line(DISPLAY_SURFACE, (255, 255, 255), laser.rect.midtop, laser.rect.midbottom,  4)
+                
         # Draw score update
         for scr in score_alert:
             if scr[4] == 20:
@@ -575,7 +587,7 @@ def game_cycle():
 
         # Draw players
         for player in players:
-            if player.y > player.y_previous + 7:
+            if player.y > player.y_previous + 12:
                 surf = player.surf[3].copy()
                 ball_rect = player.ball.get_rect(midbottom = player.rect.midtop)
                 DISPLAY_SURFACE.blit(player.ball, ball_rect)
@@ -686,12 +698,29 @@ def show_game_over_screen(winner):
     dark = pygame.Surface(DISPLAY_SURFACE.get_size()).convert_alpha()
     dark.fill((0, 0, 0, 70))
     DISPLAY_SURFACE.blit(dark, (0, 0))
-    draw_text_outline("Draw!" if winner == None else "Player 1" if winner == 1 else "Player 2", WINDOW_WIDTH/2, WINDOW_HEIGHT/2, "midbottom")
+    font_over = pygame.font.Font('freesansbold.ttf', 75)
+    draw_text_outline("Draw!" if winner == None else "Player 1" if winner == 1 else "Player 2", WINDOW_WIDTH/2, WINDOW_HEIGHT*0.3, "midbottom", font = font_over, color = (255, 255, 255) if winner == None else (P1_COLOR if winner == 1 else P2_COLOR))
 
     if winner != None:
-        draw_text_outline("is the WINNER!", WINDOW_WIDTH / 2, WINDOW_HEIGHT/2 + TEXT_OFFSET, "midtop")
+        draw_text_outline("is the WINNER!", WINDOW_WIDTH / 2, WINDOW_HEIGHT*0.3 + TEXT_OFFSET, "midtop", font = font_over)
 
-    wait_for_key_released()
+    while True:
+        font_rect = draw_text_outline("Play again", WINDOW_WIDTH/2, 450, origin= "midtop", font = font_over)
+        for event in pygame.event.get():
+                if event.type == MOUSEBUTTONUP:
+                    if  mouse_x > font_rect.x and mouse_x < font_rect.x + font_rect.width and mouse_y > font_rect.y and mouse_y < font_rect.y + font_rect.height:
+                        return
+                if event.type == QUIT:
+                    terminate()
+                if event.type == KEYDOWN:
+                    if event.key == K_ESCAPE:
+                        terminate()
+
+        mouse_x, mouse_y = pygame.mouse.get_pos()
+        if mouse_x > font_rect.x and mouse_x < font_rect.x + font_rect.width and mouse_y > font_rect.y and mouse_y < font_rect.y + font_rect.height:
+            draw_text_outline("Play again", WINDOW_WIDTH/2, 450, origin= "midtop", font = font_over, color = SELECTED_COLOR)
+        pygame.display.update()
+        FPS_CLOCK.tick(FPS)
 
 def load_level(filename):
     with open(filename, 'r') as f:
@@ -705,8 +734,6 @@ def start_level(filename, teleports):
     # Cleanup
     p1.score = 0
     p2.score = 0
-    just_teleported = []
-    score_alert = []
     for acid in acids:
         acid.kill()
         acids.remove(acid)
