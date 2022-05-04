@@ -1,4 +1,5 @@
 import random
+from turtle import width
 import pygame
 from pygame.locals import *
 import sys
@@ -30,6 +31,15 @@ COOLDOWN = FPS/3
 MULTIPLIER_ADD = 1.5
 MAX_MULTIPLIER = CELL_SIZE*3
 
+# Surfaces
+BULLET_SURFACE = pygame.image.load("sprite/bullet.png")
+LASERS = [pygame.image.load(f"sprite/laser{tolerance}.png") for tolerance in range(6)]
+SPIKE_SURFACE = pygame.image.load("sprite/spike.png")
+TELEPORT_SURFACES = [[pygame.image.load(f"sprite/teleport{id}0.png"), pygame.image.load(f"sprite/teleport{id}1.png")] for id in range(10)]
+WALL_SURFACE = pygame.image.load("sprite/wall.png")
+WALL_ACID_SURFACE = pygame.Surface((CELL_SIZE, CELL_SIZE*ACID_HEIGHT))
+WALL_ACID_SURFACE.blit(WALL_SURFACE, (0, -(1-ACID_HEIGHT)*CELL_SIZE))
+
 # Text
 BASIC_FONT_SIZE = 32
 BIG_FONT_SIZE = 128
@@ -39,9 +49,9 @@ SELECTED_COLOR = (240,240, 30)
 TEXT_OFFSET = 5
 
 class Acid(pygame.sprite.Sprite):
-    def __init__(self, grid_x, grid_y, tolerance = -1):
+    def __init__(self, grid_x, grid_y, tolerance = -1, width = 1):
         super().__init__()
-        self.surf = pygame.Surface((CELL_SIZE, CELL_SIZE*(1-ACID_HEIGHT)))
+        self.surf = pygame.Surface((CELL_SIZE*width, CELL_SIZE*(1-ACID_HEIGHT)))
         self.tolerance = tolerance
         if self.tolerance == -1:
             self.tolerance = random.choice((None, p1, p2))
@@ -58,8 +68,7 @@ class Bullet(pygame.sprite.Sprite):
         self.y = player.y + 16
         self.player = player
         self.direction = player.direction
-        self.surf = pygame.image.load("sprite/bullet.png")
-        self.rect = self.surf.get_rect(center = (self.x, self.y))
+        self.rect = BULLET_SURFACE.get_rect(center = (self.x, self.y))
         bullets.append(self)
     
     def move(self):
@@ -87,27 +96,26 @@ class Bullet(pygame.sprite.Sprite):
             bullets.remove(self)
 
 class Laser(pygame.sprite.Sprite):
-    def __init__(self, grid_x, grid_y, tolerance = -1):
+    def __init__(self, grid_x, grid_y, tolerance = -1, height = 1):
         super().__init__()
         self.grid_x = grid_x
         self.grid_y = grid_y
-        self.surf = pygame.Surface((CELL_SIZE/2, CELL_SIZE))
+        self.height = height
+        self.surf = pygame.Surface((CELL_SIZE/2, CELL_SIZE*height))
+        self.alert_surf = pygame.Surface((CELL_SIZE/4, CELL_SIZE*height))
+        self.rect = self.surf.get_rect(topleft = (self.grid_x * CELL_SIZE + CELL_SIZE/4, self.grid_y * CELL_SIZE))
         self.set_tolerance(tolerance)
         self.cooldown = -FPS*5
         self.on = True
-        self.start = False
-        self.parts = []
 
     def set_tolerance(self, tolerance = -1):
         if tolerance == -1:
-            self.tolerance = random.choice((None, p1, p2))
+            self.tolerance = random.choice((0, 1, 2))
         else:
             self.tolerance = tolerance
-        if self.tolerance == None:
-            self.surf.fill(NEUTRAL_COLOR)
-        else:
-            self.surf.fill(P1_COLOR if self.tolerance == p1 else P2_COLOR)
-        self.rect = self.surf.get_rect(topleft = (self.grid_x * CELL_SIZE + CELL_SIZE/4, self.grid_y * CELL_SIZE))
+        for i in range(self.height):
+            self.surf.blit(LASERS[self.tolerance], (0, i*CELL_SIZE))
+            self.alert_surf.blit(LASERS[self.tolerance + 3], (0, i*CELL_SIZE))
 
     def step(self):
         self.cooldown += 1
@@ -117,8 +125,7 @@ class Laser(pygame.sprite.Sprite):
                 self.on = False
             else:
                 self.on = True
-                if self.start:
-                    self.set_tolerance()
+                self.set_tolerance()
 
     
 
@@ -252,7 +259,7 @@ class Player(pygame.sprite.Sprite):
         hits = pygame.sprite.spritecollide(self, lasers, False)
         if hits:
             if hits[0].on:
-                if hits[0].tolerance != self:
+                if hits[0].tolerance != self.player and hits[0].cooldown > -FPS*4:
                     self.respawn()
         # Spike collision
         if pygame.sprite.spritecollide(self, spikes, False):
@@ -286,15 +293,14 @@ class Player(pygame.sprite.Sprite):
 class Spike(pygame.sprite.Sprite):
     def __init__(self, grid_x, grid_y):
         super().__init__()
-        self.surf = pygame.image.load(f"sprite/spike.png")
-        self.rect = self.surf.get_rect(topleft = (grid_x * CELL_SIZE, grid_y * CELL_SIZE))
+        self.rect = SPIKE_SURFACE.get_rect(topleft = (grid_x * CELL_SIZE, grid_y * CELL_SIZE))
 
 class Teleport(pygame.sprite.Sprite):
     def __init__(self, id, grid_x, grid_y):
         super().__init__()
         self.surf = [None, None]
-        self.surf[0] = pygame.image.load(f"sprite/teleport{id}0.png")
-        self.surf[1] = pygame.image.load(f"sprite/teleport{id}1.png")
+        self.surf[0] = TELEPORT_SURFACES[int(id)][0]
+        self.surf[1] = TELEPORT_SURFACES[int(id)][1]
         self.rect = self.surf[0].get_rect(topleft = (grid_x * CELL_SIZE, grid_y * CELL_SIZE))
         self.counter = 0
         
@@ -330,15 +336,16 @@ class Teleport(pygame.sprite.Sprite):
                     return
 
 class Wall(pygame.sprite.Sprite):
-    def __init__(self, grid_x, grid_y, acid = False):
+    def __init__(self, grid_x, grid_y, acid = False, width = 1):
         super().__init__()
+        self.surf = pygame.Surface((CELL_SIZE*width, CELL_SIZE))
         if acid:
-            sprite = pygame.image.load("sprite/wall.png")
-            self.surf = pygame.Surface((CELL_SIZE, CELL_SIZE*ACID_HEIGHT))
-            self.surf.blit(sprite, (0, -(1-ACID_HEIGHT)*CELL_SIZE))
+            for x in range(width):
+                self.surf.blit(WALL_ACID_SURFACE, (x*CELL_SIZE, 0))
             self.rect = self.surf.get_rect(topleft = (grid_x * CELL_SIZE, grid_y * CELL_SIZE + CELL_SIZE*(1 - ACID_HEIGHT))) 
         else:
-            self.surf = pygame.image.load("sprite/wall.png")
+            for x in range(width):
+                self.surf.blit(WALL_SURFACE, (x*CELL_SIZE, 0))
             self.rect = self.surf.get_rect(topleft = (grid_x * CELL_SIZE, grid_y * CELL_SIZE))
 
 def main():
@@ -378,7 +385,8 @@ def main():
         bullets = []
         just_teleported = []
         score_alert = []
-        start_level(f'level{random.randrange(1,levels+1)}.txt', teleports)
+        #start_level(f'level{random.randrange(1,levels+1)}.txt', teleports)
+        start_level(f'level{1}.txt', teleports)
         winner = game_cycle()
         show_game_over_screen(winner)
 
@@ -539,9 +547,6 @@ def game_cycle():
 
         for laser in lasers:
             laser.step()
-            if laser.start:
-                for l in laser.parts:
-                    l.set_tolerance(laser.tolerance)
 
         ## Drawing
         # Draw background
@@ -553,14 +558,15 @@ def game_cycle():
 
         # Draw spikes
         for spike in spikes:
-            DISPLAY_SURFACE.blit(spike.surf, spike.rect)
+            DISPLAY_SURFACE.blit(SPIKE_SURFACE, spike.rect)
 
         # Draw lasers
         for laser in lasers:
             if laser.on:
-                DISPLAY_SURFACE.blit(laser.surf, laser.rect)
-            elif laser.cooldown > -FPS:
-                pygame.draw.line(DISPLAY_SURFACE, (255, 255, 255), laser.rect.midtop, laser.rect.midbottom,  4)
+                if laser.cooldown > -FPS*5 and laser.cooldown <= -FPS*4:
+                    DISPLAY_SURFACE.blit(laser.alert_surf, (laser.rect.x + CELL_SIZE/8, laser.rect.y))
+                else:
+                    DISPLAY_SURFACE.blit(laser.surf, laser.rect)
                 
         # Draw score update
         for scr in score_alert:
@@ -584,10 +590,10 @@ def game_cycle():
             else:
                 DISPLAY_SURFACE.blit(teleport.surf[0 if teleport.counter < FPS/2 else 1], teleport.rect)
             DISPLAY_SURFACE.blit(teleport_ball, teleport_ball.get_rect(midbottom = teleport.rect.midtop))
-
+        
         # Draw players
         for player in players:
-            if player.y > player.y_previous + 12:
+            if player.y > player.y_previous + 7:
                 surf = player.surf[3].copy()
                 ball_rect = player.ball.get_rect(midbottom = player.rect.midtop)
                 DISPLAY_SURFACE.blit(player.ball, ball_rect)
@@ -601,14 +607,14 @@ def game_cycle():
             if player.acc_previous == -PLAYER_SPEED:
                 surf = pygame.transform.flip(surf, True, False)
             DISPLAY_SURFACE.blit(surf, player.rect)
-
+        
         # Draw acid
         for acid in acids:
             DISPLAY_SURFACE.blit(acid.surf, acid.rect)   
 
         # Draw bullets
         for bullet in bullets:
-            DISPLAY_SURFACE.blit(bullet.surf, bullet.rect)
+            DISPLAY_SURFACE.blit(BULLET_SURFACE, bullet.rect)
 
         # Draw pickups
         for pick in s_pickups:
@@ -752,7 +758,7 @@ def start_level(filename, teleports):
     global pickups, spawnpoints
     pickups = []
     spawnpoints = []
-    teleports = [[] for i in range(10)]
+    teleports = [[] for _ in range(10)]
     level_map = load_level(filename)
 
     for y in range(CELLS_Y):
@@ -761,46 +767,38 @@ def start_level(filename, teleports):
                 Teleport(level_map[y][x], x, y)
             else:
                 if level_map[y][x] == '#':
-                    wall = Wall(x, y)
+                    x1 = x
+                    while x + 1 < CELLS_X and level_map[y][x + 1] == '#':
+                        x += 1
+                        level_map[y][x] = '-'
+                    wall = Wall(x1, y, width = x - x1 + 1)
                     walls.add(wall)
                 elif level_map[y][x] == '|':
-                    laser = Laser(x,y)
-                    lasers.add(laser)
-                    laser.start = True
-                    tolerance = laser.tolerance 
+                    y1 = y
                     yy = y
-                    while level_map[yy + 1][x] == '|':
+                    while yy +1 < CELLS_Y and level_map[yy + 1][x] == '|':
                         yy += 1
                         level_map[yy][x] = '-'
-                        l = Laser(x, yy, tolerance)
-                        lasers.add(l)
-                        laser.parts.append(l)
+                    laser = Laser(x, y, height = yy - y1 + 1)
+                    lasers.add(laser)
                 elif level_map[y][x] == '_':
-                    wall = Wall(x, y, True)
-                    walls.add(wall)
-                    acid = Acid(x, y)
-                    acids.add(acid)
-                    tolerance = acid.tolerance
-                    while level_map[y][x + 1] == '_':
+                    x1 = x
+                    while x + 1 < CELLS_X and level_map[y][x + 1] == '_':
                         x += 1
                         level_map[y][x] = '-'
-                        wall = Wall(x, y, True)
-                        walls.add(wall)
-                        acid = Acid(x, y, tolerance)
-                        acids.add(acid)
+                    wall = Wall(x1, y, True,width = x - x1 + 1)
+                    walls.add(wall)
+                    acid = Acid(x1, y, width = x - x1 + 1)
+                    acids.add(acid)
                 elif level_map[y][x] == '/':
-                    wall = Wall(x, y, True)
-                    walls.add(wall)
-                    acid = Acid(x, y, None)
-                    acids.add(acid)
-                    tolerance = acid.tolerance
-                    while level_map[y][x + 1] == '/':
+                    x1 = x
+                    while x + 1 < CELLS_X and level_map[y][x + 1] == '/':
                         x += 1
                         level_map[y][x] = '-'
-                        wall = Wall(x, y, True)
-                        walls.add(wall)
-                        acid = Acid(x, y, tolerance)
-                        acids.add(acid)
+                    wall = Wall(x1, y, True,width = x - x1 + 1)
+                    walls.add(wall)
+                    acid = Acid(x1, y, tolerance = None, width = x - x1 + 1)
+                    acids.add(acid)
                 elif level_map[y][x] == 'P':
                     pickups.append((x, y))
                 elif level_map[y][x] == 'T':
