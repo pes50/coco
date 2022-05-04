@@ -32,6 +32,7 @@ MULTIPLIER_ADD = 1.5
 MAX_MULTIPLIER = CELL_SIZE*3
 
 # Surfaces
+ACIDS = [pygame.image.load(f"sprite/acid{tolerance}.png") for tolerance in range(3)]
 BULLET_SURFACE = pygame.image.load("sprite/bullet.png")
 LASERS = [pygame.image.load(f"sprite/laser{tolerance}.png") for tolerance in range(6)]
 SPIKE_SURFACE = pygame.image.load("sprite/spike.png")
@@ -54,11 +55,9 @@ class Acid(pygame.sprite.Sprite):
         self.surf = pygame.Surface((CELL_SIZE*width, CELL_SIZE*(1-ACID_HEIGHT)))
         self.tolerance = tolerance
         if self.tolerance == -1:
-            self.tolerance = random.choice((None, p1, p2))
-        if self.tolerance == None:
-            self.surf.fill(NEUTRAL_COLOR)
-        else:
-            self.surf.fill(P1_COLOR if self.tolerance == p1 else P2_COLOR)
+            self.tolerance = random.choice((0, 1, 2))
+        for i in range(width):
+            self.surf.blit(ACIDS[self.tolerance], (i*CELL_SIZE, 0))
         self.rect = self.surf.get_rect(topleft = (grid_x * CELL_SIZE, grid_y * CELL_SIZE))
 
 class Bullet(pygame.sprite.Sprite):
@@ -253,7 +252,7 @@ class Player(pygame.sprite.Sprite):
         # Acid collision
         hits = pygame.sprite.spritecollide(self, acids, False)
         if hits:
-            if hits[0].tolerance != self:
+            if hits[0].tolerance != self.player:
                 self.respawn()
         # Laser collision
         hits = pygame.sprite.spritecollide(self, lasers, False)
@@ -385,8 +384,7 @@ def main():
         bullets = []
         just_teleported = []
         score_alert = []
-        #start_level(f'level{random.randrange(1,levels+1)}.txt', teleports)
-        start_level(f'level{1}.txt', teleports)
+        start_level(f'level{random.randrange(1,levels+1)}.txt', teleports)
         winner = game_cycle()
         show_game_over_screen(winner)
 
@@ -797,7 +795,7 @@ def start_level(filename, teleports):
                         level_map[y][x] = '-'
                     wall = Wall(x1, y, True,width = x - x1 + 1)
                     walls.add(wall)
-                    acid = Acid(x1, y, tolerance = None, width = x - x1 + 1)
+                    acid = Acid(x1, y, tolerance = 0, width = x - x1 + 1)
                     acids.add(acid)
                 elif level_map[y][x] == 'P':
                     pickups.append((x, y))
