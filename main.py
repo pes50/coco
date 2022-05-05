@@ -1,5 +1,4 @@
 import random
-from turtle import width
 import pygame
 from pygame.locals import *
 import sys
@@ -335,16 +334,17 @@ class Teleport(pygame.sprite.Sprite):
                     return
 
 class Wall(pygame.sprite.Sprite):
-    def __init__(self, grid_x, grid_y, acid = False, width = 1):
+    def __init__(self, grid_x, grid_y, acid = False, width = 1, height = 1):
         super().__init__()
         self.surf = pygame.Surface((CELL_SIZE*width, CELL_SIZE))
         if acid:
             for x in range(width):
-                self.surf.blit(WALL_ACID_SURFACE, (x*CELL_SIZE, 0))
+                self.surf.blit(WALL_ACID_SURFACE, (x*CELL_SIZE,0))
             self.rect = self.surf.get_rect(topleft = (grid_x * CELL_SIZE, grid_y * CELL_SIZE + CELL_SIZE*(1 - ACID_HEIGHT))) 
         else:
             for x in range(width):
-                self.surf.blit(WALL_SURFACE, (x*CELL_SIZE, 0))
+                for y in range(height):
+                    self.surf.blit(WALL_SURFACE, (x*CELL_SIZE, y*CELL_SIZE))
             self.rect = self.surf.get_rect(topleft = (grid_x * CELL_SIZE, grid_y * CELL_SIZE))
 
 def main():
@@ -418,7 +418,7 @@ def first_screen():
 
     background_menu = pygame.image.load("sprite/background-menu.png")
     DISPLAY_SURFACE.blit(background_menu, (0, 0))
-    draw_text_outline("Game", WINDOW_WIDTH/2, 100, origin = "midtop", font = BIG_FONT)
+    draw_text_outline("Cobalt & Copper", WINDOW_WIDTH/2, 100, origin = "midtop", font = BIG_FONT)
     font_start = pygame.font.Font('freesansbold.ttf', 75)
 
     p1_img = pygame.image.load("sprite/player1.png")
@@ -495,6 +495,14 @@ def game_cycle():
         for event in pygame.event.get():
             if event.type == QUIT or (event.type == KEYUP and event.key == K_ESCAPE):
                 terminate()
+            if event.type == KEYUP and event.key == K_BACKSPACE:
+                if p1.score == p2.score:
+                    return None
+                if p1.score > p2.score:
+                    return 1
+                else:
+                    return 2
+
         # Get input
         keys = pygame.key.get_pressed()
         # Player 1 move
@@ -766,10 +774,16 @@ def start_level(filename, teleports):
             else:
                 if level_map[y][x] == '#':
                     x1 = x
+                    y1 = y
+                    yy = y
                     while x + 1 < CELLS_X and level_map[y][x + 1] == '#':
                         x += 1
                         level_map[y][x] = '-'
-                    wall = Wall(x1, y, width = x - x1 + 1)
+                    if x1 == x:
+                        while yy + 1 < CELLS_Y and level_map[yy + 1][x1] == '#':
+                            yy += 1
+                            level_map[y][x] = '-'  
+                    wall = Wall(x1, y, width = x - x1 + 1, height = yy - y1 + 1)
                     walls.add(wall)
                 elif level_map[y][x] == '|':
                     y1 = y
