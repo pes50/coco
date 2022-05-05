@@ -1,6 +1,6 @@
 # Cobalt & Copper
 
-is a platformer for 2 players on one computer. Your goal is to collect given number of diamonds before your friend.  
+Cobalt & Copper is a platformer for 2 players on one computer. Your goal is to collect given number of diamonds before your friend.  
 
 ## Controls
 
